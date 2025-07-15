@@ -1,0 +1,9 @@
+google-adk==1.5.0
+yfinance==0.2.64
+psutil==7.0.0
+litellm==1.73.6
+google-generativeai==0.8.5
+python-dotenv==1.1.1
+flask==3.0.0
+flask-cors==4.0.0
+requests==2.31.0
