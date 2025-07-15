@@ -1,150 +1,113 @@
-# 🚀 Deploy Sara no EasyPanel com Docker Compose
+# Guia de Deploy no EasyPanel
 
-## 📦 Arquivos Necessários
+## Problemas Resolvidos ✅
 
-Certifique-se de que você tem estes arquivos no seu repositório:
+A configuração do Docker Compose foi otimizada para o EasyPanel, resolvendo os seguintes conflitos:
 
-```
-projeto/
-├── docker-compose.yml        # ✅ Criado
-├── Dockerfile               # ✅ Criado  
-├── requirements.txt         # ✅ Criado
-├── env-config.md            # ✅ Configurações
-├── sara-medical-law-agent/  # ✅ Agente Sara
-│   ├── __init__.py
-│   └── agent.py
-└── outros-agentes/          # ✅ Outros (opcional)
-```
+- ❌ **container_name removido** - O EasyPanel gerencia nomes automaticamente
+- ❌ **ports substituído por expose** - O EasyPanel gerencia mapeamento de portas  
+- ❌ **redes personalizadas removidas** - O EasyPanel usa rede padrão
+- ❌ **volumes simplificados** - Evita conflitos desnecessários
 
-## 🔧 Passo a Passo no EasyPanel
+## Passo a Passo Atualizado
 
-### 1. 📂 Preparar Repositório
+### 1. Repositório Público ✅
+Seu repositório já está público: `https://github.com/Alexvjunior/adk-agents.git`
 
+### 2. Configuração no EasyPanel
+
+1. **Criar Novo Serviço**
+   - Clique em "Serviço" 
+   - Selecione "Docker Compose"
+
+2. **Configurar Repositório**
+   - **URL**: `https://github.com/Alexvjunior/adk-agents.git`
+   - **Branch**: `master`
+   - **Caminho do Build**: `/` (raiz)
+   - **Arquivo Docker Compose**: `docker-compose.yml`
+
+3. **Variáveis de Ambiente** 
+   ```
+   GOOGLE_API_KEY=sua_chave_api_google_aqui
+   EASYPANEL_DOMAIN=seu-dominio.com
+   ```
+
+### 3. Configuração de Rede no EasyPanel
+
+Como removemos as configurações de porta personalizadas:
+
+1. **O EasyPanel automaticamente:**
+   - Gerencia o mapeamento de portas
+   - Detecta a porta 5000 via `expose`
+   - Configura o proxy reverso via Traefik
+
+2. **Verificar após deploy:**
+   - Vá em "Rede" no painel do serviço
+   - Confirme que a porta 5000 está mapeada
+   - Configure domínio customizado se necessário
+
+### 4. Verificação de Saúde
+
+O healthcheck está configurado para:
+- **Endpoint**: `http://localhost:5000/list-apps`  
+- **Intervalo**: 30 segundos
+- **Timeout**: 10 segundos
+- **Tentativas**: 3
+- **Período inicial**: 40 segundos
+
+### 5. Acesso à API
+
+Após o deploy bem-sucedido:
+
+**Endpoints disponíveis:**
+- `GET /list-apps` - Lista agentes disponíveis
+- `GET /docs` - Documentação OpenAPI
+- `POST /apps/sara-medical-law-agent/users/{user_id}/sessions` - Criar sessão
+- `POST /run` - Executar consulta
+
+**Exemplo de teste:**
 ```bash
-# Adicionar docker-compose.yml ao git
-git add docker-compose.yml env-config.md EASYPANEL_DEPLOY.md
-git commit -m "Add Docker Compose for EasyPanel deploy"
-git push origin main
+# Verificar se está funcionando
+curl https://seu-dominio.com/list-apps
+
+# Ver documentação
+curl https://seu-dominio.com/docs
 ```
 
-### 2. 🐳 Criar Projeto no EasyPanel
+## Troubleshooting
 
-1. **Login no EasyPanel**
-2. **Criar Novo Projeto**
-3. **Escolher "Docker Compose"** (não Docker simples)
+### Se ainda houver conflitos:
 
-### 3. ⚙️ Configuração do Projeto
+1. **Verificar logs do container:**
+   - No EasyPanel, vá em "Logs" do serviço
+   - Procure por erros de inicialização
 
-**A. Repository Settings:**
-- **Repository URL:** `https://github.com/SEU-USUARIO/sara-medical-agent.git`
-- **Branch:** `main`
-- **Docker Compose File:** `docker-compose.yml`
+2. **Verificar variáveis de ambiente:**
+   - Confirme que `GOOGLE_API_KEY` está definida
+   - Verifique se não há caracteres especiais
 
-**B. Build Settings:**
-- **Build Context:** `.` (raiz do projeto)
-- **Service Name:** `sara-medical-agent`
+3. **Verificar porta:**
+   - O serviço deve expor porta 5000
+   - O EasyPanel deve mapear automaticamente
 
-### 4. 🔑 Variáveis de Ambiente
+4. **Recrear serviço se necessário:**
+   - Delete o serviço atual
+   - Recrie com a configuração corrigida
 
-No EasyPanel, vá em **"Environment Variables"** e adicione:
+### Logs Importantes
 
-| Nome | Valor | Obrigatório |
-|------|-------|-------------|
-| `GOOGLE_API_KEY` | sua-chave-google-aqui | ✅ Sim |
-| `PORT` | `5000` | ✅ Sim |
-| `PYTHONPATH` | `/app` | ✅ Sim |
-
-**🔑 Como obter GOOGLE_API_KEY:**
-1. Acesse [Google AI Studio](https://aistudio.google.com/)
-2. Clique em "Get API Key"
-3. Crie nova chave
-4. Copie para o EasyPanel
-
-### 5. 🌐 Configuração de Rede
-
-- **Port Mapping:** `5000:5000`
-- **Protocol:** `HTTP`
-- **Health Check:** Habilitado (já configurado no compose)
-
-### 6. 🚀 Deploy
-
-1. Clique em **"Deploy"**
-2. Aguarde build (2-4 minutos)
-3. EasyPanel gerará URL: `https://sara-xyz123.easypanel.host`
-
-## ✅ Verificar se Funcionou
-
-### Teste 1: Lista de Agentes
-```bash
-curl https://sua-url.easypanel.host/list-apps
-# Resposta: ["sara-medical-law-agent", ...]
+Se houver problemas, verifique estes logs:
+```
+- Container startup logs
+- Traefik proxy logs  
+- Application logs (erros da API)
 ```
 
-### Teste 2: Documentação
-```
-https://sua-url.easypanel.host/docs
-```
+## Próximos Passos
 
-### Teste 3: Conversa com Sara
-```bash
-# 1. Criar sessão
-curl -X POST https://sua-url.easypanel.host/apps/sara-medical-law-agent/users/test/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"state": {}}'
+1. **Deploy** - Use a configuração corrigida
+2. **Teste** - Verifique endpoints básicos
+3. **Configuração de domínio** - Configure seu domínio personalizado
+4. **Monitoramento** - Configure alertas de saúde se necessário
 
-# 2. Fazer pergunta (use o sessionId retornado)
-curl -X POST https://sua-url.easypanel.host/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "appName": "sara-medical-law-agent",
-    "userId": "test",
-    "sessionId": "COLE-SESSION-ID-AQUI",
-    "newMessage": {"parts": [{"text": "Quais são os direitos dos pacientes?"}]}
-  }'
-```
-
-## 🎯 Vantagens do Docker Compose
-
-✅ **Health Checks automáticos**  
-✅ **Restart automático** se container falhar  
-✅ **Logs persistentes**  
-✅ **Rede isolada** para segurança  
-✅ **Labels para proxy reverso**  
-✅ **Configuração mais flexível**  
-
-## 🔧 Troubleshooting
-
-### Container não inicia
-```bash
-# Ver logs no EasyPanel
-docker-compose logs sara-medical-agent
-```
-
-### API não responde
-1. **Verificar porta 5000** exposta
-2. **Conferir GOOGLE_API_KEY** válida
-3. **Checar health check** nos logs
-
-### Rebuild forçado
-1. No EasyPanel: **"Force Rebuild"**
-2. Ou: **"Restart Service"**
-
-## 📊 Monitoramento
-
-O Docker Compose inclui:
-- **Health Check** automático (`/list-apps`)
-- **Restart Policy** (`unless-stopped`)
-- **Logs estruturados**
-- **Metrics** via labels Traefik
-
-## 🎉 Resultado Final
-
-Após deploy bem-sucedido:
-- **🌐 API:** `https://sua-url.easypanel.host`
-- **📚 Docs:** `https://sua-url.easypanel.host/docs`  
-- **💚 Health:** `https://sua-url.easypanel.host/list-apps`
-- **🏥 Sara:** Pronta para consultas de direito médico!
-
----
-
-**🚀 Sara está online e pronta para atender! Deploy concluído com sucesso!** 
+A configuração agora está otimizada para o EasyPanel e deve deployar sem conflitos! 🚀 
