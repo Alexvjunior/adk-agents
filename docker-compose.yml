@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "80:80"  # Porta padrão web
+      - "8080:8080"  # Porta padrão web
     environment:
-      - PORT=80
+      - PORT=8080
       - PYTHONPATH=/app
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -19,7 +19,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.agno-api.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
-      - "traefik.http.services.agno-api.loadbalancer.server.port=80"
+      - "traefik.http.services.agno-api.loadbalancer.server.port=8080"
       - "description=Agno API - Gemini AI Assistant"
       - "maintainer=Alex"
       - "version=2.0"
