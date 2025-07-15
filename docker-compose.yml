@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "9876:8000"  # Porta externa bem diferente: 9876
     environment:
       - PORT=8000
       - PYTHONPATH=/app
