@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  sara-medical-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sara-medical-law-agent
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - PYTHONPATH=/app
+      # Variáveis de ambiente do Google ADK (configurar no EasyPanel)
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+    volumes:
+      # Volume para logs persistentes (opcional)
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/list-apps"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      # Labels para identificação no EasyPanel
+      - "traefik.enable=true"
+      - "traefik.http.routers.sara.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
+      - "traefik.http.services.sara.loadbalancer.server.port=5000"
+      # Descrição do serviço
+      - "description=Sara - Especialista em Direito Médico e da Saúde"
+      - "maintainer=Alex"
+      - "version=1.0"
+    networks:
+      - sara-network
+
+networks:
+  sara-network:
+    driver: bridge
+    name: sara-medical-network
+
+# Opcional: Volume para persistência de dados
+volumes:
+  sara-logs:
+    driver: local 
