@@ -1,7 +1,7 @@
 import os
 import requests
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from agno.agent import Agent
 from agno.models.google import Gemini
@@ -82,8 +82,9 @@ sara_pro = Agent(
     show_tool_calls=False,
 )
 
-class InputData(BaseModel):
-    question: str
+# Comentado temporariamente para debug
+# class InputData(BaseModel):
+#     question: str
 
 
 @app.get("/")
@@ -123,17 +124,50 @@ async def especialidades():
 
 
 @app.post("/ask")
-async def ask_sara(data: InputData):
+async def ask_sara(request: Request):
     """Consulta com Sara - Especialista em Direito Médico"""
     try:
-        # Log do que estamos recebendo
-        logger.info(f"📥 Sara recebeu consulta:")
-        logger.info(f"   - Pergunta: {data.question}")
-        logger.info(f"   - Tamanho: {len(data.question)} caracteres")
+        # Log completo do que estamos recebendo
+        body = await request.body()
+        logger.info(f"📥 DADOS RAW RECEBIDOS:")
+        logger.info(f"   - Body raw: {body}")
+        logger.info(f"   - Content-Type: {request.headers.get('content-type')}")
+        logger.info(f"   - Headers: {dict(request.headers)}")
+        
+        try:
+            data = await request.json()
+            logger.info(f"   - JSON parsed: {data}")
+            logger.info(f"   - Tipo do data: {type(data)}")
+            logger.info(f"   - Chaves disponíveis: {list(data.keys()) if isinstance(data, dict) else 'Não é dict'}")
+        except Exception as json_error:
+            logger.error(f"   - Erro ao fazer parse JSON: {json_error}")
+            return {"error": "Dados recebidos não são JSON válido", "raw_data": body.decode()}
+        
+        # Tentar extrair a pergunta de diferentes campos possíveis
+        question = None
+        possible_fields = ["question", "message", "text", "body", "content", "query"]
+        
+        for field in possible_fields:
+            if isinstance(data, dict) and field in data:
+                question = data[field]
+                logger.info(f"   - Pergunta encontrada no campo '{field}': {question}")
+                break
+        
+        if not question:
+            logger.warning(f"   - Nenhuma pergunta encontrada nos campos: {possible_fields}")
+            return {
+                "error": "Pergunta não encontrada", 
+                "received_data": data,
+                "available_fields": list(data.keys()) if isinstance(data, dict) else None,
+                "hint": "Envie a pergunta em um dos campos: " + ", ".join(possible_fields)
+            }
+        
+        logger.info(f"   - Pergunta final: {question}")
+        logger.info(f"   - Tamanho: {len(str(question))} caracteres")
         
         # Enviar para Sara
         logger.info("⚖️ Sara analisando a questão jurídica...")
-        response = sara.run(data.question)
+        response = sara.run(str(question))
         
         # Extrair apenas o conteúdo da mensagem
         message = response.content if hasattr(response, 'content') else str(response)
@@ -147,17 +181,50 @@ async def ask_sara(data: InputData):
 
 
 @app.post("/ask-pro")
-async def ask_sara_pro(data: InputData):
+async def ask_sara_pro(request: Request):
     """Análise jurídica complexa com Sara Pro"""
     try:
-        # Log do que estamos recebendo
-        logger.info(f"📥 Sara Pro recebeu consulta complexa:")
-        logger.info(f"   - Pergunta: {data.question}")
-        logger.info(f"   - Tamanho: {len(data.question)} caracteres")
+        # Log completo do que estamos recebendo
+        body = await request.body()
+        logger.info(f"📥 DADOS RAW RECEBIDOS (PRO):")
+        logger.info(f"   - Body raw: {body}")
+        logger.info(f"   - Content-Type: {request.headers.get('content-type')}")
+        logger.info(f"   - Headers: {dict(request.headers)}")
+        
+        try:
+            data = await request.json()
+            logger.info(f"   - JSON parsed: {data}")
+            logger.info(f"   - Tipo do data: {type(data)}")
+            logger.info(f"   - Chaves disponíveis: {list(data.keys()) if isinstance(data, dict) else 'Não é dict'}")
+        except Exception as json_error:
+            logger.error(f"   - Erro ao fazer parse JSON: {json_error}")
+            return {"error": "Dados recebidos não são JSON válido", "raw_data": body.decode()}
+        
+        # Tentar extrair a pergunta de diferentes campos possíveis
+        question = None
+        possible_fields = ["question", "message", "text", "body", "content", "query"]
+        
+        for field in possible_fields:
+            if isinstance(data, dict) and field in data:
+                question = data[field]
+                logger.info(f"   - Pergunta encontrada no campo '{field}': {question}")
+                break
+        
+        if not question:
+            logger.warning(f"   - Nenhuma pergunta encontrada nos campos: {possible_fields}")
+            return {
+                "error": "Pergunta não encontrada", 
+                "received_data": data,
+                "available_fields": list(data.keys()) if isinstance(data, dict) else None,
+                "hint": "Envie a pergunta em um dos campos: " + ", ".join(possible_fields)
+            }
+        
+        logger.info(f"   - Pergunta final: {question}")
+        logger.info(f"   - Tamanho: {len(str(question))} caracteres")
         
         # Enviar para Sara Pro
         logger.info("⚖️ Sara Pro fazendo análise jurídica detalhada...")
-        response = sara_pro.run(data.question)
+        response = sara_pro.run(str(question))
         
         # Extrair apenas o conteúdo da mensagem
         message = response.content if hasattr(response, 'content') else str(response)
