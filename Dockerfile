@@ -17,16 +17,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api.py .
 
 # Variáveis de ambiente
-ENV PORT=7543
+ENV PORT=80
 ENV PYTHONPATH=/app
 ENV GOOGLE_API_KEY=""
 
 # Expor porta
-EXPOSE 7543
+EXPOSE 80
 
 # Health check para a API do Agno
 HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:7543/ || exit 1
+  CMD curl -f http://localhost:80/ || exit 1
 
-# Comando para iniciar a API do Agno com uvicorn na porta 7543
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "7543"] 
+# Comando para iniciar a API do Agno com uvicorn na porta 80
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "80"] 
