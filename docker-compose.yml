@@ -1,33 +1,41 @@
 services:
-  # Serviço ADK Original (Sara)
-  sara-adk:
+  # Serviço ADK Original (Sara) - comentado para focar no Agno
+  # sara-adk:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.old
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5000:5000"
+
+  # Novo serviço Agno API
+  agno-api:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "8000:8000"
     environment:
-      - PORT=5000
+      - PORT=8000
       - PYTHONPATH=/app
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/list-apps"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sara-adk.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
-      - "traefik.http.services.sara-adk.loadbalancer.server.port=5000"
-      - "description=Sara ADK - Agente Direito Médico"
+      - "traefik.http.routers.agno-api.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
+      - "traefik.http.services.agno-api.loadbalancer.server.port=8000"
+      - "description=Agno API - Gemini AI Assistant"
       - "maintainer=Alex"
-      - "version=1.0"
+      - "version=2.0"
     networks:
-      - sara-network
+      - agno-network
 
 networks:
-  sara-network:
+  agno-network:
     driver: bridge 
