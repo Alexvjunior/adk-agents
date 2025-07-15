@@ -1,15 +1,15 @@
 services:
-  sara-medical-agent:
+  # Serviço ADK Original (Sara)
+  sara-adk:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    expose:
-      - "5000"
+    ports:
+      - "5000:5000"
     environment:
       - PORT=5000
       - PYTHONPATH=/app
-      # Variáveis de ambiente do Google ADK (configurar no EasyPanel)
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
     healthcheck:
@@ -19,11 +19,15 @@ services:
       retries: 3
       start_period: 40s
     labels:
-      # Labels para identificação no EasyPanel
       - "traefik.enable=true"
-      - "traefik.http.routers.sara.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
-      - "traefik.http.services.sara.loadbalancer.server.port=5000"
-      # Descrição do serviço
-      - "description=Sara - Especialista em Direito Médico e da Saúde"
+      - "traefik.http.routers.sara-adk.rule=Host(`${EASYPANEL_DOMAIN:-localhost}`)"
+      - "traefik.http.services.sara-adk.loadbalancer.server.port=5000"
+      - "description=Sara ADK - Agente Direito Médico"
       - "maintainer=Alex"
-      - "version=1.0" 
+      - "version=1.0"
+    networks:
+      - sara-network
+
+networks:
+  sara-network:
+    driver: bridge 
