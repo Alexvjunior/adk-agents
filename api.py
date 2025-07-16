@@ -1,5 +1,6 @@
 import os
 import logging
+import requests
 from fastapi import FastAPI, Request
 from agno.agent import Agent
 from agno.models.google import Gemini
@@ -16,6 +17,17 @@ app = FastAPI()
 
 # Configurar a API key do Gemini
 os.environ["GOOGLE_API_KEY"] = "AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ"
+
+# Configurações da Evolution API para enviar mensagens
+EVOLUTION_API_URL = os.getenv(
+    "EVOLUTION_API_URL", 
+    "https://evolution-api-evolution-api.iaz7eb.easypanel.host"
+)
+EVOLUTION_API_KEY = os.getenv(
+    "EVOLUTION_API_KEY", 
+    "150066DFD0E4-43FC-82C8-75DE2B2F0ABD"
+)
+EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE", "Luciano")
 
 # Configurar storage SQLite para sessões
 storage = SqliteAgentStorage(table_name="sessions", db_file="sessions.db")
@@ -123,6 +135,48 @@ def extract_evolution_data(data):
         return None
 
 
+async def send_whatsapp_message(remote_jid, message, instance=None):
+    """Envia mensagem via Evolution API"""
+    try:
+        if not instance:
+            instance = "Luciano"
+            
+        url = f"https://evolution-api-evolution-api.iaz7eb.easypanel.host/message/sendText/{instance}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "apikey": "150066DFD0E4-43FC-82C8-75DE2B2F0ABD"
+        }
+        
+        payload = {
+            "number": remote_jid,
+            "text": message
+        }
+        
+        logger.info("📤 Enviando mensagem via Evolution API:")
+        logger.info(f"   - URL: {url}")
+        logger.info(f"   - Para: {remote_jid}")
+        logger.info(f"   - Mensagem: {message[:100]}...")
+        
+        response = requests.post(
+            url, json=payload, headers=headers, timeout=30
+        )
+        
+        if response.status_code in [200, 201]:
+            logger.info("✅ Mensagem enviada com sucesso!")
+            logger.info(f"   - Status: {response.status_code}")
+            return True
+        else:
+            logger.error("❌ Erro ao enviar mensagem:")
+            logger.error(f"   - Status: {response.status_code}")
+            logger.error(f"   - Resposta: {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Erro ao enviar mensagem via Evolution API: {e}")
+        return False
+
+
 @app.get("/")
 async def root():
     return {
@@ -144,7 +198,8 @@ async def root():
             "do consentimento informado?\"}'"
         ),
         "evolution_api": "Compatível com webhooks da Evolution API",
-        "sessions": "Implementa histórico com SQLite storage do agno"
+        "sessions": "Implementa histórico com SQLite storage do agno",
+        "auto_reply": "Envia respostas automaticamente via Evolution API"
     }
 
 
@@ -208,6 +263,7 @@ async def ask_sara(request: Request):
         question = evolution_data['message']
         remote_jid = evolution_data['remote_jid']
         push_name = evolution_data['push_name']
+        instance = evolution_data['instance']
         
         logger.info(f"   - Pergunta final: {question}")
         logger.info(f"   - RemoteJid: {remote_jid}")
@@ -227,8 +283,21 @@ async def ask_sara(request: Request):
         logger.info(f"✅ Sara respondeu com sucesso "
                     f"(tamanho: {len(message)} caracteres)")
         
+        # Enviar resposta automaticamente via Evolution API
+        send_success = await send_whatsapp_message(
+            remote_jid=remote_jid, 
+            message=message,
+            instance=instance
+        )
+        
         return {
             "message": message, 
+            "specialist": "Sara - Direito Médico",
+            "user": push_name,
+            "remote_jid": remote_jid,
+            "session_id": session_id,
+            "auto_sent": send_success,
+            "evolution_instance": instance
         }
     except Exception as e:
         logger.error(f"❌ Erro na consulta com Sara: {str(e)}")
@@ -273,6 +342,7 @@ async def ask_sara_pro(request: Request):
         question = evolution_data['message']
         remote_jid = evolution_data['remote_jid']
         push_name = evolution_data['push_name']
+        instance = evolution_data['instance']
         
         logger.info(f"   - Pergunta final: {question}")
         logger.info(f"   - RemoteJid: {remote_jid}")
@@ -292,8 +362,21 @@ async def ask_sara_pro(request: Request):
         logger.info(f"✅ Sara Pro finalizou análise "
                     f"(tamanho: {len(message)} caracteres)")
         
+        # Enviar resposta automaticamente via Evolution API
+        send_success = await send_whatsapp_message(
+            remote_jid=remote_jid, 
+            message=message,
+            instance=instance
+        )
+        
         return {
             "message": message, 
+            "specialist": "Sara Pro - Direito Médico Sênior",
+            "user": push_name,
+            "remote_jid": remote_jid,
+            "session_id": session_id,
+            "auto_sent": send_success,
+            "evolution_instance": instance
         }
     except Exception as e:
         logger.error(f"❌ Erro na análise da Sara Pro: {str(e)}")
