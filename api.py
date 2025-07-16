@@ -229,10 +229,6 @@ async def ask_sara(request: Request):
         
         return {
             "message": message, 
-            "specialist": "Sara - Direito Médico",
-            "user": push_name,
-            "remote_jid": remote_jid,
-            "session_id": session_id
         }
     except Exception as e:
         logger.error(f"❌ Erro na consulta com Sara: {str(e)}")
@@ -298,10 +294,6 @@ async def ask_sara_pro(request: Request):
         
         return {
             "message": message, 
-            "specialist": "Sara Pro - Direito Médico Sênior",
-            "user": push_name,
-            "remote_jid": remote_jid,
-            "session_id": session_id
         }
     except Exception as e:
         logger.error(f"❌ Erro na análise da Sara Pro: {str(e)}")
