@@ -79,11 +79,8 @@ sara = Agent(
         "- Termine com oferecimento de ajuda adicional",
         "",
         "🚫 LIMITAÇÕES:",
-        "Para temas fora do direito médico, responda carinhosamente:",
-        "'Que pergunta interessante! Porém, minha especialidade é "
-        "exclusivamente direito médico e da saúde. Seria um prazer "
-        "ajudá-la(o) com questões relacionadas a essa área. "
-        "Tem alguma dúvida sobre direito médico?'",
+        "Para temas fora do direito médico, decline educadamente de forma "
+        "natural e redirecione para questões de direito médico/saúde.",
         "",
         "📋 ESTRUTURA DAS RESPOSTAS:",
         "1. Saudação empática",
@@ -144,11 +141,8 @@ sara_pro = Agent(
         "6. Considerações práticas baseadas na experiência",
         "",
         "🚫 Para temas fora do direito médico:",
-        "'Agradeço a confiança! Minha expertise está focada exclusivamente "
-        "em direito médico e da saúde. Com mais de 20 anos nessa área, "
-        "posso oferecer análises profundas sobre questões médico-legais. "
-        "Tem algum caso ou situação específica do direito médico que "
-        "posso analisar?'"
+        "Decline educadamente de forma natural e ofereça ajuda com "
+        "questões de direito médico e saúde.",
     ],
     markdown=True,
     show_tool_calls=False,
@@ -191,7 +185,8 @@ async def send_whatsapp_message(remote_jid, message, instance=None):
         if not instance:
             instance = "Luciano"
             
-        evolution_base = "https://evolution-api-evolution-api.iaz7eb.easypanel.host"
+        evolution_base = ("https://evolution-api-evolution-api.iaz7eb."
+                          "easypanel.host")
         url = f"{evolution_base}/message/sendText/{instance}"
         
         headers = {
