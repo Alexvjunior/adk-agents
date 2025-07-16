@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from agno.agent import Agent
 from agno.models.google import Gemini
-from agno.session import Session
+from agno.storage.agent.sqlite import SqliteAgentStorage
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -17,14 +17,16 @@ app = FastAPI()
 # Configurar a API key do Gemini
 os.environ["GOOGLE_API_KEY"] = "AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ"
 
-# Dicionário para armazenar sessões ativas (baseado no remoteJid)
-active_sessions = {}
+# Configurar storage SQLite para sessões
+storage = SqliteAgentStorage(table_name="sessions", db_file="sessions.db")
 
-# Criar agente Sara Sara - Especialista em Direito Médico
+# Criar agente Sara - Especialista em Direito Médico
 sara = Agent(
     name="Sara", 
     role="Especialista em Direito Médico e da Saúde",
     model=Gemini(id="gemini-1.5-flash"),
+    storage=storage,
+    add_history_to_messages=True,
     instructions=[
         "Você é Sara, uma especialista em direito médico e da saúde.",
         "Responda APENAS perguntas relacionadas a:",
@@ -50,11 +52,7 @@ sara = Agent(
         "Sempre cite a legislação brasileira quando aplicável "
         "(Código Civil, Código de Ética Médica, Lei 8.080/90, etc.)",
         "Seja precisa, técnica e didática nas explicações.",
-        "Use exemplos práticos quando apropriado.",
-        "",
-        "IMPORTANTE: Você tem memória das conversas anteriores com cada usuário.",
-        "Use o contexto das mensagens anteriores para dar respostas mais precisas.",
-        "Se o usuário se referir a algo mencionado antes, use essa informação."
+        "Use exemplos práticos quando apropriado."
     ],
     markdown=True,
     show_tool_calls=False,
@@ -65,6 +63,8 @@ sara_pro = Agent(
     name="Sara Pro", 
     role="Especialista Sênior em Direito Médico e da Saúde",
     model=Gemini(id="gemini-1.5-pro"),
+    storage=storage,
+    add_history_to_messages=True,
     instructions=[
         "Você é Sara Pro, uma especialista sênior em direito médico "
         "e da saúde.",
@@ -86,10 +86,7 @@ sara_pro = Agent(
         "- Jurisprudência relevante quando possível",
         "- Aspectos práticos e preventivos",
         "- Estruture a resposta de forma organizada",
-        "- Use linguagem técnica mas acessível",
-        "",
-        "IMPORTANTE: Você tem memória das conversas anteriores com cada usuário.",
-        "Use o contexto das mensagens anteriores para análises mais precisas."
+        "- Use linguagem técnica mas acessível"
     ],
     markdown=True,
     show_tool_calls=False,
@@ -126,38 +123,28 @@ def extract_evolution_data(data):
         return None
 
 
-def get_or_create_session(remote_jid, push_name="Usuário"):
-    """Recupera sessão existente ou cria nova baseada no remoteJid"""
-    if remote_jid not in active_sessions:
-        # Criar nova sessão com ID baseado no remoteJid
-        session_id = f"evolution-{remote_jid}"
-        active_sessions[remote_jid] = Session(id=session_id)
-        logger.info(f"🔄 Nova sessão criada para {push_name}: {session_id}")
-    else:
-        logger.info(f"🔄 Sessão recuperada para {push_name}: {remote_jid}")
-    
-    return active_sessions[remote_jid]
-
-
 @app.get("/")
 async def root():
     return {
         "message": "Sara - Especialista em Direito Médico e da Saúde", 
-        "description": ("Assistente especializada em direito médico, "
-                       "responsabilidade civil médica, ética médica, "
-                       "direito do paciente e legislação em saúde."),
+        "description": (
+            "Assistente especializada em direito médico, "
+            "responsabilidade civil médica, ética médica, "
+            "direito do paciente e legislação em saúde."
+        ),
         "endpoints": {
             "/ask": "Consultas básicas em direito médico",
             "/ask-pro": "Análises jurídicas complexas em direito médico", 
-            "/especialidades": "Áreas de especialização",
-            "/sessions": "Sessões ativas (debug)"
+            "/especialidades": "Áreas de especialização"
         },
-        "example_curl": ("curl -X POST http://127.0.0.1:8080/ask "
-                        "-H 'Content-Type: application/json' "
-                        "-d '{\"question\": \"Quais são os requisitos "
-                        "do consentimento informado?\"}'"),
+        "example_curl": (
+            "curl -X POST http://127.0.0.1:8080/ask "
+            "-H 'Content-Type: application/json' "
+            "-d '{\"question\": \"Quais são os requisitos "
+            "do consentimento informado?\"}'"
+        ),
         "evolution_api": "Compatível com webhooks da Evolution API",
-        "sessions": "Implementa sessões por usuário (remoteJid)"
+        "sessions": "Implementa histórico com SQLite storage do agno"
     }
 
 
@@ -180,21 +167,6 @@ async def especialidades():
             "Vigilância sanitária",
             "Bioética e biodireito"
         ]
-    }
-
-
-@app.get("/sessions")
-async def get_sessions():
-    """Endpoint para verificar sessões ativas (para debug)"""
-    return {
-        "total_sessions": len(active_sessions),
-        "active_sessions": {
-            remote_jid: {
-                "session_id": session.id,
-                "messages_count": len(session.history) if hasattr(session, 'history') else 0
-            }
-            for remote_jid, session in active_sessions.items()
-        }
     }
 
 
@@ -223,13 +195,14 @@ async def ask_sara(request: Request):
         evolution_data = extract_evolution_data(data)
         
         if not evolution_data or not evolution_data['message']:
-            msg = "   - Mensagem não encontrada nos dados da Evolution"
-            logger.warning(msg)
+            logger.warning("Mensagem não encontrada nos dados da Evolution")
             return {
                 "error": "Mensagem não encontrada", 
                 "received_data": data,
-                "hint": ("Certifique-se de que a mensagem está em "
-                        "data.message.conversation")
+                "hint": (
+                    "Certifique-se de que a mensagem está em "
+                    "data.message.conversation"
+                )
             }
         
         question = evolution_data['message']
@@ -240,12 +213,12 @@ async def ask_sara(request: Request):
         logger.info(f"   - RemoteJid: {remote_jid}")
         logger.info(f"   - Nome do usuário: {push_name}")
         
-        # Obter ou criar sessão para este usuário
-        session = get_or_create_session(remote_jid, push_name)
+        # Usar session_id baseado no remote_jid
+        session_id = f"evolution-{remote_jid}"
         
-        # Enviar para Sara com sessão
+        # Enviar para Sara com session_id (histórico automático)
         logger.info("⚖️ Sara analisando a questão jurídica...")
-        response = sara.run(question, session=session)
+        response = sara.run(question, session_id=session_id)
         
         # Extrair apenas o conteúdo da mensagem
         message = (response.content if hasattr(response, 'content') 
@@ -259,7 +232,7 @@ async def ask_sara(request: Request):
             "specialist": "Sara - Direito Médico",
             "user": push_name,
             "remote_jid": remote_jid,
-            "session_id": session.id
+            "session_id": session_id
         }
     except Exception as e:
         logger.error(f"❌ Erro na consulta com Sara: {str(e)}")
@@ -291,13 +264,14 @@ async def ask_sara_pro(request: Request):
         evolution_data = extract_evolution_data(data)
         
         if not evolution_data or not evolution_data['message']:
-            msg = "   - Mensagem não encontrada nos dados da Evolution"
-            logger.warning(msg)
+            logger.warning("Mensagem não encontrada nos dados da Evolution")
             return {
                 "error": "Mensagem não encontrada", 
                 "received_data": data,
-                "hint": ("Certifique-se de que a mensagem está em "
-                        "data.message.conversation")
+                "hint": (
+                    "Certifique-se de que a mensagem está em "
+                    "data.message.conversation"
+                )
             }
         
         question = evolution_data['message']
@@ -308,12 +282,12 @@ async def ask_sara_pro(request: Request):
         logger.info(f"   - RemoteJid: {remote_jid}")
         logger.info(f"   - Nome do usuário: {push_name}")
         
-        # Obter ou criar sessão para este usuário
-        session = get_or_create_session(remote_jid, push_name)
+        # Usar session_id baseado no remote_jid
+        session_id = f"evolution-pro-{remote_jid}"
         
-        # Enviar para Sara Pro com sessão
+        # Enviar para Sara Pro com session_id (histórico automático)
         logger.info("⚖️ Sara Pro fazendo análise jurídica detalhada...")
-        response = sara_pro.run(question, session=session)
+        response = sara_pro.run(question, session_id=session_id)
         
         # Extrair apenas o conteúdo da mensagem
         message = (response.content if hasattr(response, 'content') 
@@ -327,7 +301,7 @@ async def ask_sara_pro(request: Request):
             "specialist": "Sara Pro - Direito Médico Sênior",
             "user": push_name,
             "remote_jid": remote_jid,
-            "session_id": session.id
+            "session_id": session_id
         }
     except Exception as e:
         logger.error(f"❌ Erro na análise da Sara Pro: {str(e)}")
