@@ -47,6 +47,13 @@ sara = Agent(
         "Trate cada pessoa como um cliente importante que merece atenção "
         "personalizada.",
         "",
+        "🚨 IMPORTANTE - PERSONA HUMANA:",
+        "- NUNCA mencione que é uma IA ou sistema artificial",
+        "- Sempre se comporte como uma advogada humana real",
+        "- Use experiências pessoais profissionais de forma natural",
+        "- Fale sobre seus anos de prática como se fosse real",
+        "- Mantenha sempre a identidade de advogada especialista",
+        "",
         "🩺 PERSONALIDADE:",
         "- Seja acolhedora e compreensiva com as situações médicas",
         "- Demonstre preocupação real com os problemas apresentados",
@@ -108,8 +115,15 @@ sara_pro = Agent(
         "experiência profissional.",
         "Trate cada consulta como um caso complexo que merece análise "
         "detalhada.",
-
-        "🎓 PERFIL PROFISSIONAL:",
+        "",
+        "🚨 IMPORTANTE - PERSONA HUMANA:",
+        "- NUNCA mencione que é uma IA ou sistema artificial",
+        "- Sempre se comporte como uma advogada sênior humana real",
+        "- Fale sobre seus 20+ anos de experiência como se fosse real",
+        "- Use casos e experiências profissionais de forma natural",
+        "- Mantenha sempre a identidade de advogada sênior especialista",
+        "",
+        "🎓 PERFIL PROFISSIONAL:"
         "- Advogada sênior com mestrado em Direito Médico",
         "- Experiência em grandes hospitais e planos de saúde",
         "- Especialista em casos complexos e jurisprudência",
@@ -152,19 +166,34 @@ sara_pro = Agent(
 def extract_evolution_data(data):
     """Extrai dados específicos do webhook da Evolution API"""
     try:
-        # Extrair dados específicos da Evolution API
-        conversation_path = data.get('data', {}).get('message', {})
-        key_path = data.get('data', {}).get('key', {})
-        
-        evolution_data = {
-            'message': conversation_path.get('conversation', ''),
-            'remote_jid': key_path.get('remoteJid', ''),
-            'push_name': data.get('data', {}).get('pushName', 'Usuário'),
-            'timestamp': data.get('data', {}).get('messageTimestamp', 0),
-            'instance': data.get('instance', ''),
-            'event': data.get('event', ''),
-            'message_type': data.get('data', {}).get('messageType', ''),
-        }
+        # Verificar se é o novo formato (com inputs/query)
+        if 'inputs' in data and 'query' in data:
+            logger.info("📱 Novo formato Evolution API detectado")
+            inputs = data.get('inputs', {})
+            evolution_data = {
+                'message': data.get('query', ''),
+                'remote_jid': inputs.get('remoteJid', ''),
+                'push_name': inputs.get('pushName', 'Usuário'),
+                'timestamp': 0,  # Novo formato não tem timestamp
+                'instance': inputs.get('instanceName', ''),
+                'event': 'message',  # Assumir evento de mensagem
+                'message_type': 'text',  # Assumir tipo texto
+            }
+        else:
+            # Formato antigo (data/message/key)
+            logger.info("📱 Formato antigo Evolution API detectado")
+            conversation_path = data.get('data', {}).get('message', {})
+            key_path = data.get('data', {}).get('key', {})
+            
+            evolution_data = {
+                'message': conversation_path.get('conversation', ''),
+                'remote_jid': key_path.get('remoteJid', ''),
+                'push_name': data.get('data', {}).get('pushName', 'Usuário'),
+                'timestamp': data.get('data', {}).get('messageTimestamp', 0),
+                'instance': data.get('instance', ''),
+                'event': data.get('event', ''),
+                'message_type': data.get('data', {}).get('messageType', ''),
+            }
         
         logger.info("📱 Dados Evolution extraídos:")
         logger.info(f"   - Mensagem: {evolution_data['message']}")
@@ -220,6 +249,44 @@ async def send_whatsapp_message(remote_jid, message, instance=None):
             
     except Exception as e:
         logger.error(f"❌ Erro ao enviar mensagem via Evolution API: {e}")
+        return False
+
+
+def is_bot_message(data):
+    """Verifica se a mensagem veio do próprio bot para evitar loops"""
+    try:
+        # Verificar formato e extrair mensagem
+        if 'inputs' in data and 'query' in data:
+            # Novo formato
+            conversation = data.get('query', '')
+        else:
+            # Formato antigo
+            message_data = data.get('data', {}).get('message', {})
+            conversation = message_data.get('conversation', '')
+        
+        # Se mensagem muito longa, provavelmente é do bot
+        if len(conversation) > 500:
+            logger.info(f"🤖 Mensagem longa detectada "
+                        f"(possivelmente do bot): {len(conversation)} chars")
+            return True
+            
+        # Verificar se contém padrões típicos de IA
+        ai_patterns = [
+            "Como uma advogada especialista",
+            "Em minha experiência",
+            "Baseado na legislação",
+            "⚖️", "🩺", "📋"  # Emojis que o Sara usa
+        ]
+        
+        for pattern in ai_patterns:
+            if pattern in conversation:
+                logger.info(f"🤖 Padrão de IA detectado: {pattern}")
+                return True
+                
+        return False
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao verificar se é mensagem do bot: {e}")
         return False
 
 
@@ -330,20 +397,14 @@ async def ask_sara(request: Request):
                     f"(tamanho: {len(message)} caracteres)")
         
         # Enviar resposta automaticamente via Evolution API
-        send_success = await send_whatsapp_message(
-            remote_jid=remote_jid, 
-            message=message,
-            instance=instance
-        )
+        # send_success = await send_whatsapp_message(
+        #     remote_jid=remote_jid, 
+        #     message=message,
+        #     instance=instance
+        # )
         
         return {
             "message": message, 
-            "specialist": "Sara - Direito Médico",
-            "user": push_name,
-            "remote_jid": remote_jid,
-            "session_id": session_id,
-            "auto_sent": send_success,
-            "evolution_instance": instance
         }
     except Exception as e:
         logger.error(f"❌ Erro na consulta com Sara: {str(e)}")
