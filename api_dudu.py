@@ -94,7 +94,10 @@ def create_google_calendar_tools():
                     "https://www.googleapis.com/oauth2/v1/certs"
                 ),
                 "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
-                "redirect_uris": ["http://localhost", "https://agentes-agents.iaz7eb.easypanel.host/"]
+                "redirect_uris": [
+                    "http://localhost", 
+                    "https://agentes-agents.iaz7eb.easypanel.host/"
+                ]
             }
         }
         
@@ -234,12 +237,31 @@ def extract_evolution_data(data):
         if isinstance(data, dict):
             # Tentar diferentes estruturas possíveis
             message = None
+            audio_base64 = None
+            image_base64 = None
+            message_type = 'text'  # Padrão: texto
             remote_jid = None
             push_name = None
             instance = None
 
-            # Opção 1: data.message.conversation
-            if 'message' in data and isinstance(data['message'], dict):
+            # Verificar se é mensagem de imagem
+            if ('message' in data and isinstance(data['message'], dict) and
+                    'imageMessage' in data['message'] and 
+                    'base64' in data['message']):
+                image_base64 = data['message']['base64']
+                message_type = 'image'
+                logger.info("🖼️ Mensagem de imagem detectada")
+
+            # Verificar se é mensagem de áudio
+            elif ('message' in data and isinstance(data['message'], dict) and
+                    'audioMessage' in data['message'] and 
+                    'base64' in data['message']):
+                audio_base64 = data['message']['base64']
+                message_type = 'audio'
+                logger.info("📻 Mensagem de áudio detectada")
+
+            # Opção 1: data.message.conversation (texto)
+            elif 'message' in data and isinstance(data['message'], dict):
                 if 'conversation' in data['message']:
                     message = data['message']['conversation']
                 elif 'text' in data['message']:
@@ -264,11 +286,17 @@ def extract_evolution_data(data):
             elif 'sender_name' in data:
                 push_name = data['sender_name']
 
-            if 'instance' in data:
+            # Capturar instance ou instanceId
+            if 'instanceId' in data:
+                instance = data['instanceId']
+            elif 'instance' in data:
                 instance = data['instance']
 
             return {
                 'message': message,
+                'audio_base64': audio_base64,
+                'image_base64': image_base64,
+                'message_type': message_type,
                 'remote_jid': remote_jid or 'unknown',
                 'push_name': push_name or 'Cliente',
                 'instance': instance or 'default'
@@ -333,22 +361,43 @@ async def ask_vanessa(request: Request):
         # Extrair dados específicos da Evolution API
         evolution_data = extract_evolution_data(data)
 
-        if not evolution_data or not evolution_data['message']:
-            logger.warning("Mensagem não encontrada nos dados da Evolution")
+        if not evolution_data:
+            logger.warning("Dados não conseguiram ser extraídos da Evolution")
             return {
-                "error": "Mensagem não encontrada",
+                "error": "Dados não conseguiram ser extraídos",
+                "received_data": data,
+            }
+
+        # Verificar se temos conteúdo (texto, áudio ou imagem)
+        has_text = evolution_data['message'] is not None
+        has_audio = evolution_data['audio_base64'] is not None
+        has_image = evolution_data['image_base64'] is not None
+        
+        if not has_text and not has_audio and not has_image:
+            logger.warning("Nem texto, áudio ou imagem encontrados nos dados")
+            return {
+                "error": "Nem texto, áudio ou imagem encontrados",
                 "received_data": data,
                 "hint": (
-                    "Certifique-se de que a mensagem está em "
-                    "data.message.conversation ou data.question"
+                    "Certifique-se de que há 'conversation' para texto, "
+                    "'audioMessage' com 'base64' para áudio, ou "
+                    "'imageMessage' com 'base64' para imagem"
                 )
             }
 
-        question = evolution_data['message']
         remote_jid = evolution_data['remote_jid']
         push_name = evolution_data['push_name']
+        message_type = evolution_data['message_type']
 
-        logger.info(f"   - Mensagem final: {question}")
+        logger.info(f"   - Tipo de mensagem: {message_type}")
+        if has_text:
+            logger.info(f"   - Texto: {evolution_data['message']}")
+        if has_audio:
+            audio_length = len(evolution_data['audio_base64'])
+            logger.info(f"   - Áudio: {audio_length} chars base64")
+        if has_image:
+            image_length = len(evolution_data['image_base64'])
+            logger.info(f"   - Imagem: {image_length} chars base64")
         logger.info(f"   - RemoteJid: {remote_jid}")
         logger.info(f"   - Nome do usuário: {push_name}")
 
@@ -358,7 +407,26 @@ async def ask_vanessa(request: Request):
         # Enviar para Vanessa com session_id (histórico automático)
         logger.info("🎯 Vanessa consultando base de conhecimento e "
                     "respondendo...")
-        response = vanessa.run(question, session_id=session_id)
+        
+        # Processar baseado no tipo de mensagem
+        if message_type == 'image' and has_image:
+            logger.info("🖼️ Processando mensagem de imagem")
+            response = vanessa.run(
+                images=[evolution_data['image_base64']], 
+                session_id=session_id
+            )
+        elif message_type == 'audio' and has_audio:
+            logger.info("📻 Processando mensagem de áudio")
+            response = vanessa.run(
+                audio=evolution_data['audio_base64'], 
+                session_id=session_id
+            )
+        else:
+            logger.info("📝 Processando mensagem de texto")
+            response = vanessa.run(
+                evolution_data['message'], 
+                session_id=session_id
+            )
 
         # Extrair apenas o conteúdo da mensagem com verificação de None
         if response is None:
