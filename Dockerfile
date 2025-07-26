@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar o código da API
 COPY api_dudu.py .
-COPY api_dudu.py .
+COPY knowledge .
+
 
 # Variáveis de ambiente
 ENV PORT=8080
