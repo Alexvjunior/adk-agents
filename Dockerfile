@@ -13,15 +13,22 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar o código da API
+# Copiar o código da API e diretórios necessários
 COPY api_dudu.py .
-COPY knowledge .
-
+COPY api.py .
+COPY knowledge/ ./knowledge/
 
 # Variáveis de ambiente
 ENV PORT=8080
 ENV PYTHONPATH=/app
 ENV GOOGLE_API_KEY=""
+ENV GOOGLE_CLIENT_ID=""
+ENV GOOGLE_CLIENT_SECRET=""
+ENV GOOGLE_PROJECT_ID=""
+ENV GOOGLE_REFRESH_TOKEN=""
+ENV EVOLUTION_API_URL=""
+ENV EVOLUTION_API_KEY=""
+ENV EVOLUTION_INSTANCE=""
 
 # Expor porta
 EXPOSE 8080
