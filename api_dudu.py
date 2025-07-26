@@ -244,8 +244,20 @@ def extract_evolution_data(data):
             push_name = None
             instance = None
 
+            # NOVO FORMATO: Verificar se é o formato com 'query' e 'inputs'
+            if 'query' in data and 'inputs' in data:
+                message = data['query']
+                message_type = 'text'
+                # Extrair informações de inputs
+                inputs = data['inputs']
+                if isinstance(inputs, dict):
+                    remote_jid = inputs.get('remoteJid', 'unknown')
+                    push_name = inputs.get('pushName', 'Cliente')
+                    instance = inputs.get('instanceName', 'default')
+                logger.info("Novo formato Evolution API detectado")
+
             # Verificar se é mensagem de imagem
-            if ('message' in data and isinstance(data['message'], dict) and
+            elif ('message' in data and isinstance(data['message'], dict) and
                     'imageMessage' in data['message'] and 
                     'base64' in data['message']):
                 image_base64 = data['message']['base64']
@@ -275,22 +287,27 @@ def extract_evolution_data(data):
             elif 'question' in data:  # Para testes diretos
                 message = data['question']
 
-            # Extrair informações do remetente
-            if 'key' in data and isinstance(data['key'], dict):
-                remote_jid = data['key'].get('remoteJid', 'unknown')
-            elif 'from' in data:
-                remote_jid = data['from']
+            # Extrair informações do remetente (formato antigo)
+            if not remote_jid:  # Só se não foi definido no novo formato
+                if 'key' in data and isinstance(data['key'], dict):
+                    remote_jid = data['key'].get('remoteJid', 'unknown')
+                elif 'from' in data:
+                    remote_jid = data['from']
+                elif 'user' in data:  # Novo formato pode ter 'user'
+                    remote_jid = data['user']
 
-            if 'pushName' in data:
-                push_name = data['pushName']
-            elif 'sender_name' in data:
-                push_name = data['sender_name']
+            if not push_name:  # Só se não foi definido no novo formato
+                if 'pushName' in data:
+                    push_name = data['pushName']
+                elif 'sender_name' in data:
+                    push_name = data['sender_name']
 
             # Capturar instance ou instanceId
-            if 'instanceId' in data:
-                instance = data['instanceId']
-            elif 'instance' in data:
-                instance = data['instance']
+            if not instance:  # Só se não foi definido no novo formato
+                if 'instanceId' in data:
+                    instance = data['instanceId']
+                elif 'instance' in data:
+                    instance = data['instance']
 
             return {
                 'message': message,
