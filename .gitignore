@@ -1,0 +1,37 @@
+# Arquivos de credenciais sensíveis
+calendar_token.json
+credenciais.json
+*.token
+credentials*.json
+.env
+# Variáveis de ambiente
+.env
+.env.local
+.env.production
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db 

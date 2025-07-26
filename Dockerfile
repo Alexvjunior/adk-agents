@@ -29,4 +29,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/ || exit 1
 
 # Comando para iniciar a API do Agno com uvicorn na porta 8080
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8080"] 
+CMD ["uvicorn", "api_dudu:app", "--host", "0.0.0.0", "--port", "8080"] 

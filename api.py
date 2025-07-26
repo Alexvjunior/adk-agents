@@ -1,10 +1,14 @@
 import os
 import logging
 import requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from agno.agent import Agent
 from agno.models.google import Gemini
 from agno.storage.agent.sqlite import SqliteAgentStorage
+
+# Carregar variáveis de ambiente
+load_dotenv()
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -15,10 +19,12 @@ logger = logging.getLogger(__name__)
 # =====================
 app = FastAPI()
 
-# Configurar a API key do Gemini
-os.environ["GOOGLE_API_KEY"] = "AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ"
+# Configurar a API key do Gemini usando variável de ambiente
+google_api_key = os.getenv("GOOGLE_API_KEY", 
+                           "AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ")
+os.environ["GOOGLE_API_KEY"] = google_api_key
 
-# Configurações da Evolution API para enviar mensagens
+# Configurações da Evolution API para enviar mensagens usando variáveis de ambiente
 EVOLUTION_API_URL = os.getenv(
     "EVOLUTION_API_URL", 
     "https://evolution-api-evolution-api.iaz7eb.easypanel.host"
@@ -208,49 +214,6 @@ def extract_evolution_data(data):
         return None
 
 
-async def send_whatsapp_message(remote_jid, message, instance=None):
-    """Envia mensagem via Evolution API"""
-    try:
-        if not instance:
-            instance = "Luciano"
-            
-        evolution_base = ("https://evolution-api-evolution-api.iaz7eb."
-                          "easypanel.host")
-        url = f"{evolution_base}/message/sendText/{instance}"
-        
-        headers = {
-            "Content-Type": "application/json",
-            "apikey": "150066DFD0E4-43FC-82C8-75DE2B2F0ABD"
-        }
-        
-        payload = {
-            "number": remote_jid,
-            "text": message
-        }
-        
-        logger.info("📤 Enviando mensagem via Evolution API:")
-        logger.info(f"   - URL: {url}")
-        logger.info(f"   - Para: {remote_jid}")
-        logger.info(f"   - Mensagem: {message[:100]}...")
-        
-        response = requests.post(
-            url, json=payload, headers=headers, timeout=30
-        )
-        
-        if response.status_code in [200, 201]:
-            logger.info("✅ Mensagem enviada com sucesso!")
-            logger.info(f"   - Status: {response.status_code}")
-            return True
-        else:
-            logger.error("❌ Erro ao enviar mensagem:")
-            logger.error(f"   - Status: {response.status_code}")
-            logger.error(f"   - Resposta: {response.text}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Erro ao enviar mensagem via Evolution API: {e}")
-        return False
-
 
 def is_bot_message(data):
     """Verifica se a mensagem veio do próprio bot para evitar loops"""
@@ -396,13 +359,6 @@ async def ask_sara(request: Request):
         logger.info(f"✅ Sara respondeu com sucesso "
                     f"(tamanho: {len(message)} caracteres)")
         
-        # Enviar resposta automaticamente via Evolution API
-        # send_success = await send_whatsapp_message(
-        #     remote_jid=remote_jid, 
-        #     message=message,
-        #     instance=instance
-        # )
-        
         return {
             "message": message, 
         }
@@ -469,12 +425,6 @@ async def ask_sara_pro(request: Request):
         logger.info(f"✅ Sara Pro finalizou análise "
                     f"(tamanho: {len(message)} caracteres)")
         
-        # Enviar resposta automaticamente via Evolution API
-        send_success = await send_whatsapp_message(
-            remote_jid=remote_jid, 
-            message=message,
-            instance=instance
-        )
         
         return {
             "message": message, 
