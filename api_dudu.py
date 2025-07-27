@@ -2,6 +2,9 @@ import os
 import logging
 import json
 import tempfile
+import threading
+from datetime import datetime
+from typing import Dict
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from agno.agent import Agent
@@ -17,6 +20,7 @@ from agno.vectordb.chroma import ChromaDb
 from agno.document.reader.text_reader import TextReader
 from agno.embedder.google import GeminiEmbedder
 from pathlib import Path
+from evolution_api_tools import EvolutionApiTools
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -25,6 +29,141 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+
+# Sistema de Follow-up Automático
+class FollowUpManager:
+    """Gerencia follow-ups automáticos após período de inatividade"""
+    
+    def __init__(self):
+        self.pending_followups: Dict[str, threading.Timer] = {}
+        self.last_interaction: Dict[str, datetime] = {}
+        self.followup_delay = 20 * 60  # 20 minutos em segundos
+        self.scheduled_clients = set()  # Clientes que agendaram reunião
+        
+    def schedule_followup(self, remote_jid: str, 
+                         evolution_tools: EvolutionApiTools):
+        """Agenda um follow-up para ser enviado após 20 minutos"""
+        # Não agendar follow-up se cliente já agendou reunião
+        if remote_jid in self.scheduled_clients:
+            logger.info(f"🚫 Follow-up não agendado para {remote_jid} - "
+                       f"cliente já agendou reunião")
+            return
+        
+        # Cancelar follow-up anterior se existir
+        self.cancel_followup(remote_jid)
+        
+        # Registrar última interação
+        self.last_interaction[remote_jid] = datetime.now()
+        
+        # Criar timer para follow-up
+        timer = threading.Timer(
+            self.followup_delay,
+            self._send_followup,
+            args=[remote_jid, evolution_tools]
+        )
+        
+        self.pending_followups[remote_jid] = timer
+        timer.start()
+        
+        logger.info(f"⏰ Follow-up agendado para {remote_jid} em 20 minutos")
+    
+    def cancel_followup(self, remote_jid: str):
+        """Cancela follow-up pendente (quando usuário responde)"""
+        if remote_jid in self.pending_followups:
+            self.pending_followups[remote_jid].cancel()
+            del self.pending_followups[remote_jid]
+            logger.info(f"❌ Follow-up cancelado para {remote_jid}")
+    
+    def stop_followup_permanently(self, remote_jid: str, reason: str = "agendou reunião"):
+        """Para follow-up permanentemente (quando cliente agenda reunião)"""
+        # Cancelar follow-up pendente
+        self.cancel_followup(remote_jid)
+        
+        # Adicionar à lista de clientes que agendaram
+        self.scheduled_clients.add(remote_jid)
+        
+        logger.info(f"🛑 Follow-up PERMANENTEMENTE DESATIVADO para {remote_jid} - {reason}")
+    
+    def reactivate_followup(self, remote_jid: str):
+        """Reativa follow-up (caso necessário)"""
+        if remote_jid in self.scheduled_clients:
+            self.scheduled_clients.remove(remote_jid)
+            logger.info(f"🔄 Follow-up reativado para {remote_jid}")
+    
+    def check_if_appointment_made(self, message_content: str, remote_jid: str):
+        """Verifica se mensagem indica agendamento feito com sucesso"""
+        # Palavras-chave que indicam agendamento bem-sucedido
+        appointment_keywords = [
+            "agendado com sucesso",
+            "reunião marcada",
+            "encontro agendado", 
+            "conversa agendada",
+            "evento criado",
+            "agendamento confirmado",
+            "reunião confirmada",
+            "evento adicionado ao calendário",
+            "nossa reunião está marcada"
+        ]
+        
+        message_lower = message_content.lower()
+        for keyword in appointment_keywords:
+            if keyword in message_lower:
+                logger.info(f"📅 AGENDAMENTO DETECTADO para {remote_jid}: '{keyword}'")
+                return True
+        
+        return False
+    
+    def _send_followup(self, remote_jid: str, 
+                      evolution_tools: EvolutionApiTools):
+        """Envia mensagem de follow-up automática"""
+        # Verificar se cliente não agendou reunião antes de enviar
+        if remote_jid in self.scheduled_clients:
+            logger.info(f"🚫 Follow-up cancelado - {remote_jid} já agendou reunião")
+            return
+        
+        try:
+            # Extrair número do JID (remover @s.whatsapp.net)
+            number = remote_jid.replace("@s.whatsapp.net", "")
+            
+            # Mensagens de follow-up variadas
+            followup_messages = [
+                ("Olá! Vi que você estava interessado nos nossos resultados. "
+                 "Tem alguma dúvida sobre como conseguimos R$ 877.000 para "
+                 "nossos clientes?"),
+                ("Oi! Ainda está por aí? Nossos restaurantes parceiros "
+                 "aumentaram vendas em 300%. Quer saber como aplicamos "
+                 "isso no seu negócio?"),
+                ("Ei! Não queria deixar passar a oportunidade. Nosso Eduardo "
+                 "pode mostrar exatamente como conseguimos esses resultados "
+                 "incríveis para restaurantes."),
+                ("Olá! Talvez tenha perdido minha mensagem anterior. Temos "
+                 "cases reais de restaurantes que saíram de pouco movimento "
+                 "para faturar mais de R$ 877 mil!")
+            ]
+            
+            # Escolher mensagem baseada no horário (para variar)
+            import random
+            message = random.choice(followup_messages)
+            
+            # Enviar follow-up
+            result = evolution_tools.send_text_message(
+                number=number,
+                text=message
+            )
+            
+            logger.info(f"📤 Follow-up enviado para {number}: {result}")
+            
+            # Limpar da lista de pendentes
+            if remote_jid in self.pending_followups:
+                del self.pending_followups[remote_jid]
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao enviar follow-up para {remote_jid}: {e}")
+
+
+# Instância global do gerenciador de follow-up
+followup_manager = FollowUpManager()
 
 # Usar variável de ambiente para Google API Key
 google_api_key = os.getenv("GOOGLE_API_KEY", 
@@ -142,6 +281,18 @@ calendar = create_google_calendar_tools()
 # Ferramenta Shell para executar comandos (obter data/hora atual)
 shell_tools = ShellTools(base_dir=Path("."))
 
+# Criar ferramentas Evolution API para WhatsApp
+try:
+    evolution_tools = EvolutionApiTools(
+        server_url='https://evolution-api-evolution-api.iaz7eb.easypanel.host',
+        api_key='88B69AFEDA22-4836-858D-72852AA04B1F',
+        instance='Dudu Numero Não Usando'
+    )
+    logger.info("Evolution API Tools configurado com sucesso")
+except Exception as e:
+    logger.error(f"Erro ao configurar Evolution API Tools: {e}")
+    evolution_tools = None
+
 # Definir ferramentas baseado na disponibilidade do calendário
 tools = [shell_tools]
 if calendar:
@@ -151,6 +302,11 @@ else:
     warning_msg = ("Google Calendar não configurado - "
                    "verifique as variáveis de ambiente")
     logger.warning(warning_msg)
+
+# Adicionar Evolution API Tools se disponível
+if evolution_tools:
+    tools.append(evolution_tools)
+    logger.info("Evolution API Tools adicionado ao agente")
 
 
 # Criar agente Vanessa - Vendedora da Elo Marketing
@@ -163,7 +319,7 @@ vanessa = Agent(
     knowledge=agent_knowledge,
     add_history_to_messages=True,
     instructions=[
-        "Você é Vanessa, vendedora da Elo Marketing especializada em "
+        "Você é Vanessa, vendedora ATACANTE da Elo Marketing especializada em "
         "ajudar restaurantes.",
         "",
         "INFORMAÇÕES DA EMPRESA (das conversas reais):",
@@ -172,6 +328,12 @@ vanessa = Agent(
         "- Tempo de mercado: 19 anos (completando 19 anos de mercado)",
         "- Site: https://elomarketing.com.br/",
         "- Especialidade: Restaurantes de frutos do mar e outros tipos",
+        "",
+        "PERSONALIDADE ATACANTE - BASEADA NAS CONVERSAS REAIS:",
+        "Seja PROATIVA, CONDUTORA e ATACANTE. NÃO seja passiva.",
+        "CONDUZA a conversa com AUTORIDADE e CONFIANÇA.",
+        "Apresente resultados IMEDIATAMENTE quando o cliente mostrar interesse.",
+        "NÃO espere o cliente perguntar - VOCÊ guia o processo.",
         "",
         "Seu objetivo é captar leads qualificados e marcar reuniões com o "
         "especialista Eduardo.",
@@ -190,9 +352,7 @@ vanessa = Agent(
         "continue o diálogo naturalmente.",
         "",
         "Seja direta, educada e objetiva. Mantenha respostas curtas e "
-        "conversacionais.",
-        "",
-        "Nunca pressione o cliente. Seja consultiva e amigável.",
+        "conversacionais, mas SEMPRE ATACANTE.",
         "",
         "IMPORTANTE: Nunca mencione aspectos técnicos como 'ferramenta de "
         "calendário', 'base de conhecimento', 'sistema' ou qualquer coisa "
@@ -204,25 +364,82 @@ vanessa = Agent(
         "- Use as ferramentas de calendário e shell conforme orientado",
         "- Siga exatamente os fluxos e procedimentos da base de conhecimento",
         "",
-        "Quando alguém perguntar sobre cases de sucesso, sempre mencione "
-        "o faturamento de R$ 862.000 em um mês com investimento de R$ 7 mil.",
-        "",
-        "Quando perguntarem sobre resultados, mencione o crescimento de "
-        "300% que conseguimos para restaurantes parceiros.",
+        "PITCH ATACANTE - USE IMEDIATAMENTE QUANDO APROPRIADO:",
+        "Eu trabalho ajudando restaurantes a aumentarem suas vendas através "
+        "do marketing digital. Conseguimos faturar mais de R$ 877.000 para "
+        "nossos clientes com investimento de apenas R$ 7 mil. Crescimento "
+        "de mais de 300% nas vendas.",
         "",
         "ABERTURA PADRÃO: Sempre comece conversas com 'Oi, é do Restaurante? "
         "Vocês têm cardápio ou menu online?' (baseado nas conversas reais)."
         "",
-        "📩 IMPORTANTE - MENSAGEM AUTOMÁTICA:",
+        "📩 ESTRATÉGIA ATACANTE - BASEADA NAS CONVERSAS REAIS:",
         "- A primeira mensagem 'Oi, é do Restaurante? Vocês têm cardápio ou "
         "menu online?' será SEMPRE enviada automaticamente",
-        "- Quando o cliente responder qualquer coisa, prossiga naturalmente",
+        "- Quando o cliente responder qualquer coisa, prossiga ATACANTE:",
         "- NÃO repita a abertura padrão se o cliente já respondeu",
         "- Continue a conversa baseada na resposta do cliente:",
-        "  * Se disser 'sim' → pergunte sobre resultados atuais",
-        "  * Se disser 'não' → explique benefícios do marketing digital",
-        "  * Se perguntar sobre preços → fale de resultados primeiro",
-        "  * Se quiser reunião → inicie processo de agendamento",
+        "",
+        "🎯 FLUXO ATACANTE (BASEADO NAS CONVERSAS REAIS):",
+        "* Se disser 'SIM' → IMEDIATAMENTE apresente o PITCH COMPLETO com números:",
+        "  'Perfeito! Eu trabalho ajudando restaurantes a aumentarem suas vendas "
+        "  através do marketing digital. Conseguimos faturar mais de R$ 877.000 "
+        "  para nossos clientes com investimento de apenas R$ 7 mil. Crescimento "
+        "  de mais de 300% nas vendas. Quer ver como podemos ajudar vocês?'",
+        "",
+        "* Se disser 'NÃO' → ATAQUE com benefícios específicos:",
+        "  'Então vocês estão perdendo muitas vendas! Marketing digital para "
+        "  restaurantes pode aumentar suas vendas em mais de 300%. Nossos "
+        "  clientes faturam mais de R$ 877.000 com apenas R$ 7 mil de investimento.'",
+        "",
+        "* Se perguntar sobre PREÇOS → PRIMEIRO mostre RESULTADOS, depois valor:",
+        "  'Nossos clientes faturam R$ 877.000 com investimento de R$ 7 mil. "
+        "  ROI de mais de 12.000%. O investimento é muito baixo comparado ao retorno.'",
+        "",
+        "* Se quiser REUNIÃO → ACELERE o processo:",
+        "  'Perfeito! Vou agendar uma conversa com nosso especialista Eduardo "
+        "  para mostrar exatamente como conseguimos esses resultados para vocês.'",
+        "",
+        "🚀 REGRAS ATACANTES:",
+        "1. NUNCA seja passiva - SEMPRE conduza a conversa",
+        "2. Apresente números e resultados IMEDIATAMENTE",
+        "3. NÃO espere o cliente perguntar - VOCÊ informa proativamente",
+        "4. Use prova social e casos de sucesso constantemente",
+        "5. Crie senso de urgência e oportunidade",
+        "6. Guie direto para o agendamento após despertar interesse",
+        "",
+        "📱 FERRAMENTAS DE WHATSAPP DISPONÍVEIS:",
+        "- Use send_text_message para enviar mensagens de texto via WhatsApp",
+        "- Use send_media_message para enviar imagens, vídeos ou documentos",
+        "- Use check_whatsapp_number para verificar se um número está no WhatsApp",
+        "- Formato de número: 5548999999999 (código país + DDD + número)",
+        "- Para enviar imagens, use a ferramenta send_media_message com media_type='image'",
+        "",
+        "🎯 IMPORTANTE - USO ATIVO DAS FERRAMENTAS WHATSAPP:",
+        "SEMPRE que o cliente demonstrar interesse ou quando apropriado:",
+        "1. ENVIE mensagens de follow-up via WhatsApp usando send_text_message",
+        "2. ENVIE relatórios e visualizações via send_media_message quando falar de resultados",
+        "3. IMAGENS DISPONÍVEIS na pasta knowledge para enviar:",
+        "   - 'knowledge/relatorio.jpg' - Relatório de resultados dos clientes",
+        "   - 'knowledge/visualizacao.jpg' - Gráfico de visualizações e crescimento",
+        "",
+        "📊 QUANDO ENVIAR IMAGENS VIA WHATSAPP:",
+        "- Ao mencionar resultados de R$ 877.000: ENVIE knowledge/relatorio.jpg",
+        "- Ao falar de crescimento de 300%: ENVIE knowledge/visualizacao.jpg", 
+        "- Use caption explicativa: 'Aqui estão os resultados reais dos nossos clientes'",
+        "",
+        "💬 ESTRATÉGIA DE MENSAGENS WHATSAPP:",
+        "- Após resposta interessada: ENVIE mensagem de follow-up",
+        "- Após apresentar pitch: ENVIE comprovação visual (imagens)",
+        "- Antes de agendar: ENVIE resumo dos benefícios",
+        "- SEMPRE use as ferramentas para engajar ativamente o cliente",
+        "",
+        "🚨 REGRA CRÍTICA - FERRAMENTAS WHATSAPP:",
+        "- NÃO apenas responda, TAMBÉM aja usando as ferramentas",
+        "- SEMPRE que falar de resultados, COMPROVE com imagens via WhatsApp",
+        "- SEJA PROATIVA: envie materiais sem o cliente pedir",
+        "- MANTENHA o cliente engajado com conteúdo visual",
+        "",
         "- Sempre consulte sua base de conhecimento para respostas precisas"
     ],
     markdown=True,
@@ -459,6 +676,36 @@ async def ask_vanessa(request: Request):
 
         logger.info(f"✅ Vanessa respondeu com sucesso "
                     f"(tamanho: {len(message)} caracteres)")
+
+        # SISTEMA DE FOLLOW-UP AUTOMÁTICO
+        # Verificar se agendamento foi feito
+        if followup_manager.check_if_appointment_made(message, remote_jid):
+            # Parar follow-up permanentemente se agendamento foi feito
+            followup_manager.stop_followup_permanently(remote_jid)
+            
+            # Enviar mensagem de confirmação do agendamento
+            if evolution_tools:
+                try:
+                    number = remote_jid.replace("@s.whatsapp.net", "")
+                    confirmation_msg = ("✅ Perfeito! Sua reunião foi agendada. "
+                                       "Eduardo entrará em contato no horário marcado. "
+                                       "Obrigada por escolher a Elo Marketing!")
+                    
+                    evolution_tools.send_text_message(
+                        number=number,
+                        text=confirmation_msg
+                    )
+                    logger.info(f"📅 Confirmação de agendamento enviada para {number}")
+                except Exception as e:
+                    logger.error(f"❌ Erro ao enviar confirmação: {e}")
+        else:
+            # Cancelar follow-up anterior (usuário respondeu)
+            followup_manager.cancel_followup(remote_jid)
+            
+            # Agendar novo follow-up se evolution_tools estiver disponível
+            if evolution_tools:
+                followup_manager.schedule_followup(remote_jid, evolution_tools)
+                logger.info(f"⏰ Follow-up automático agendado para {remote_jid}")
 
         return {
             "message": message,
