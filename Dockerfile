@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar o código da API e diretórios necessários
 COPY team_elo_marketing.py .
 COPY knowledge/ ./knowledge/
+COPY evolution_api_tools.py .
 
 # Variáveis de ambiente
 ENV PORT=8080
