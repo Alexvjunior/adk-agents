@@ -421,9 +421,9 @@ shell_tools = ShellTools(base_dir=Path("."))
 
 # Evolution API Tools
 evolution_tools = EvolutionApiTools(
-    server_url='https://evolution-api-evolution-api.iaz7eb.easypanel.host',
-    api_key='88B69AFEDA22-4836-858D-72852AA04B1F',
-    instance='Dudu Numero Não Usando'
+    server_url=os.getenv("EVOLUTION_API_URL"),
+    api_key=os.getenv("EVOLUTION_API_KEY"),
+    instance=os.getenv("EVOLUTION_INSTANCE")
 )
 
 # Ferramentas para os agentes
@@ -493,6 +493,15 @@ vanessa = Agent(
         "  SEMPRE consulte sua base de conhecimento primeiro",
         "- Use as ferramentas de calendário e shell conforme orientado",
         "- Siga exatamente os fluxos e procedimentos da base de conhecimento",
+        "",
+        "📆 USO DO GOOGLE CALENDAR:",
+        "OBRIGATÓRIO: Sempre que fizer um agendamento:",
+        "1. USE a ferramenta create_event do Google Calendar",
+        "2. Crie o evento com título: 'Reunião Elo Marketing - [Nome do Cliente]'",
+        "3. Defina duração de 1 hora",
+        "4. Adicione descrição: 'Apresentação de resultados e estratégias de marketing digital'",
+        "5. SEMPRE inclua timezone 'America/Sao_Paulo' nas datas",
+        "6. DEPOIS inclua a tag AGENDAMENTO_REALIZADO na sua resposta",
         "",
         "PITCH ATACANTE - USE IMEDIATAMENTE QUANDO APROPRIADO:",
         "Eu trabalho ajudando restaurantes a aumentarem suas vendas através "
@@ -628,6 +637,7 @@ eduardo = Agent(
 # TEAM ELO MARKETING
 elo_team = Team(
     members=[vanessa, eduardo],
+    model=Gemini(id="gemini-2.0-flash"),
     instructions=[
         "Vocês são o Team Elo Marketing especializado em restaurantes.",
         "",
