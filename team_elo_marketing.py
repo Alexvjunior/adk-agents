@@ -23,10 +23,10 @@ from agno.tools.knowledge import KnowledgeTools
 from agno.tools.googlecalendar import GoogleCalendarTools
 from agno.tools.shell import ShellTools
 from agno.document.chunking.recursive import RecursiveChunking
-# from agno.knowledge.agent import AgentKnowledge
-# from agno.vectordb.chroma import ChromaDb
-# from agno.document.reader.text_reader import TextReader
-# from agno.embedder.google import GeminiEmbedder
+from agno.knowledge.agent import AgentKnowledge
+from agno.vectordb.chroma import ChromaDb
+from agno.document.reader.text_reader import TextReader
+from agno.embedder.google import GeminiEmbedder
 from pathlib import Path
 from evolution_api_tools import EvolutionApiTools
 
@@ -320,12 +320,24 @@ os.environ["GOOGLE_API_KEY"] = google_api_key
 
 storage = SqliteAgentStorage(table_name="team_sessions", db_file="team_sessions.db")
 
-# Base de conhecimento compartilhada
-knowledge_base = TextKnowledgeBase(
-    path="knowledge/",
-    chunking_strategy=RecursiveChunking(
-        chunk_size=1000, overlap=100
+
+agent_knowledge = AgentKnowledge(
+
+    vector_db=ChromaDb(
+        collection="elo_marketing_knowledge",
+        embedder=GeminiEmbedder(
+            id="text-embedding-004",  # Modelo de embedding do Google
+            # Usa sua API key existente
+            api_key=os.environ.get("GOOGLE_API_KEY")
+        ),
+        path="knowledge_db",
+        persistent_client=True,
     ),
+    chunking_strategy=RecursiveChunking(
+        chunk_size=1000,
+        overlap=100
+    ),
+    num_documents=5,
 )
 
 # Carregar documentos
@@ -337,14 +349,6 @@ for file_path in knowledge_dir.iterdir():
         documents = reader.read(file_path)
         for doc in documents:
             agent_knowledge.add_document_to_knowledge_base(document=doc)
-
-knowledge = KnowledgeTools(
-    knowledge=knowledge_base,
-    think=True,
-    search=True,
-    analyze=True,
-    instructions="Use sempre o FAQ para responder perguntas.",
-)
 
 
 def create_google_calendar_tools():
