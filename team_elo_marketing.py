@@ -23,10 +23,10 @@ from agno.tools.knowledge import KnowledgeTools
 from agno.tools.googlecalendar import GoogleCalendarTools
 from agno.tools.shell import ShellTools
 from agno.document.chunking.recursive import RecursiveChunking
-from agno.knowledge.agent import AgentKnowledge
-from agno.vectordb.chroma import ChromaDb
-from agno.document.reader.text_reader import TextReader
-from agno.embedder.google import GeminiEmbedder
+# from agno.knowledge.agent import AgentKnowledge
+# from agno.vectordb.chroma import ChromaDb
+# from agno.document.reader.text_reader import TextReader
+# from agno.embedder.google import GeminiEmbedder
 from pathlib import Path
 from evolution_api_tools import EvolutionApiTools
 
@@ -328,23 +328,6 @@ knowledge_base = TextKnowledgeBase(
     ),
 )
 
-agent_knowledge = AgentKnowledge(
-    vector_db=ChromaDb(
-        collection="elo_team_knowledge",
-        embedder=GeminiEmbedder(
-            id="text-embedding-004",
-            api_key=os.environ.get("GOOGLE_API_KEY")
-        ),
-        path="knowledge_db",
-        persistent_client=True,
-    ),
-    chunking_strategy=RecursiveChunking(
-        chunk_size=1000,
-        overlap=100
-    ),
-    num_documents=5,
-)
-
 # Carregar documentos
 reader = TextReader(chunk=True)
 knowledge_dir = Path("knowledge/")
@@ -419,12 +402,18 @@ def create_google_calendar_tools():
 calendar = create_google_calendar_tools()
 shell_tools = ShellTools(base_dir=Path("."))
 
-# Evolution API Tools
-evolution_tools = EvolutionApiTools(
-    server_url=os.getenv("EVOLUTION_API_URL"),
-    api_key=os.getenv("EVOLUTION_API_KEY"),
-    instance=os.getenv("EVOLUTION_INSTANCE")
-)
+# Evolution API Tools com credenciais diretas
+evolution_tools = None
+try:
+    evolution_tools = EvolutionApiTools(
+        server_url="https://evolution-api-evolution-api.iaz7eb.easypanel.host",
+        api_key="88B69AFEDA22-4836-858D-72852AA04B1F",
+        instance="Dudu Numero Não Usando"
+    )
+    logger.info("✅ Evolution API Tools criada com sucesso")
+except Exception as e:
+    logger.error(f"❌ Erro ao criar Evolution API Tools: {e}")
+    logger.warning("⚠️ Continuando sem Evolution API Tools")
 
 # Ferramentas para os agentes
 tools = [shell_tools]
