@@ -14,7 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar o código da API e diretórios necessários
-COPY team_elo_marketing.py .
+COPY api_dudu.py .
 COPY knowledge/ ./knowledge/
 COPY evolution_api_tools.py .
 
@@ -38,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/ || exit 1
 
 # Comando para iniciar a API do Agno com uvicorn na porta 8080
-CMD ["uvicorn", "team_elo_marketing:app", "--host", "0.0.0.0", "--port", "8080"] 
+CMD ["uvicorn", "api_dudu:app", "--host", "0.0.0.0", "--port", "8080"] 
