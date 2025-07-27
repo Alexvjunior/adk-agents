@@ -214,7 +214,7 @@ knowledge = KnowledgeTools(
     think=True,
     search=True,
     analyze=True,
-    instructions="Use sempre o FAQ para responder perguntas. Procure por "
+    instructions="Use sempre as conversas reais para responder perguntas. Procure por "
                  "respostas específicas no knowledge base antes de responder.",
 )
 
@@ -294,7 +294,7 @@ except Exception as e:
     evolution_tools = None
 
 # Definir ferramentas baseado na disponibilidade do calendário
-tools = [shell_tools]
+tools = [shell_tools, knowledge]
 if calendar:
     tools.append(calendar)
     logger.info("Google Calendar configurado com sucesso")
