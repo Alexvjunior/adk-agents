@@ -18,8 +18,6 @@ from agno.agent import Agent
 from agno.team import Team
 from agno.models.google import Gemini
 from agno.storage.agent.sqlite import SqliteAgentStorage
-from agno.knowledge.text import TextKnowledgeBase
-from agno.tools.knowledge import KnowledgeTools
 from agno.tools.googlecalendar import GoogleCalendarTools
 from agno.tools.shell import ShellTools
 from agno.document.chunking.recursive import RecursiveChunking
@@ -502,14 +500,13 @@ vanessa = Agent(
         "nossos clientes com investimento de apenas R$ 7 mil. Crescimento "
         "de mais de 300% nas vendas.",
         "",
-        "ABERTURA PADRÃO: Sempre comece conversas com 'Oi, é do Restaurante? "
-        "Vocês têm cardápio ou menu online?' (baseado nas conversas reais)."
+        "ABERTURA PADRÃO: A mensagem 'Oi, é do Restaurante? Vocês têm cardápio ou menu online?' já foi enviada por outro sistema.",
+        "NÃO REPITA esta abertura. Continue a conversa baseada na resposta do cliente.",
         "",
         "📩 ESTRATÉGIA ATACANTE - BASEADA NAS CONVERSAS REAIS:",
-        "- A primeira mensagem 'Oi, é do Restaurante? Vocês têm cardápio ou "
-        "menu online?' será SEMPRE enviada automaticamente",
-        "- Quando o cliente responder qualquer coisa, prossiga ATACANTE:",
-        "- NÃO repita a abertura padrão se o cliente já respondeu",
+        "- A mensagem de abertura 'Oi, é do Restaurante? Vocês têm cardápio ou menu online?' já foi enviada por outro sistema",
+        "- Quando o cliente responder qualquer coisa, prossiga ATACANTE imediatamente:",
+        "- NÃO repita a abertura padrão - ela já está no histórico",
         "- Continue a conversa baseada na resposta do cliente:",
         "",
         "🎯 FLUXO ATACANTE (BASEADO NAS CONVERSAS REAIS):",
@@ -815,6 +812,27 @@ async def team_conversation(request: Request):
         session_id = f"team-{remote_jid}"
 
         logger.info(f"👥 Team processando mensagem de {push_name} ({remote_jid})")
+
+        # Verificar se é a primeira interação e adicionar mensagem de abertura ao histórico
+        try:
+            # Buscar histórico existente
+            existing_session = storage.read(session_id)
+            
+            # Se não há histórico, significa que é a primeira resposta do cliente
+            # Então adicionamos a mensagem de abertura que foi enviada por outro sistema
+            if not existing_session or len(existing_session.messages) == 0:
+                logger.info(f"📝 Primeira interação detectada para {push_name} - adicionando abertura ao histórico")
+                
+                # Simular que a Vanessa enviou a mensagem de abertura
+                opening_message = "Oi, é do Restaurante? Vocês têm cardápio ou menu online?"
+                
+                # Executar primeiro com a mensagem de abertura para criar o histórico
+                elo_team.run(opening_message, session_id=session_id)
+                
+                logger.info(f"✅ Mensagem de abertura adicionada ao histórico de {push_name}")
+        
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao verificar/adicionar histórico: {e}")
 
         # Processar com o Team
         if message_type == 'image' and evolution_data['image_base64']:
