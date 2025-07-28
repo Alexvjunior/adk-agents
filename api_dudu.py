@@ -485,8 +485,36 @@ def extract_evolution_data(data):
             push_name = None
             instance = None
 
-            # NOVO FORMATO: Verificar se é o formato com 'query' e 'inputs'
-            if 'query' in data and 'inputs' in data:
+            # NOVO FORMATO 2025: Verificar se é o novo formato com camada 'data'
+            if 'data' in data and isinstance(data['data'], dict):
+                payload_data = data['data']
+                logger.info("📦 Novo formato Evolution API 2025 detectado")
+                
+                # Extrair mensagem do novo formato
+                if 'message' in payload_data and isinstance(payload_data['message'], dict):
+                    if 'conversation' in payload_data['message']:
+                        message = payload_data['message']['conversation']
+                        message_type = 'text'
+                    elif 'imageMessage' in payload_data['message'] and 'base64' in payload_data['message']:
+                        image_base64 = payload_data['message']['base64']
+                        message_type = 'image'
+                    elif 'audioMessage' in payload_data['message'] and 'base64' in payload_data['message']:
+                        audio_base64 = payload_data['message']['base64']
+                        message_type = 'audio'
+                
+                # Extrair informações do remetente do novo formato
+                if 'key' in payload_data and isinstance(payload_data['key'], dict):
+                    remote_jid = payload_data['key'].get('remoteJid', 'unknown')
+                
+                if 'pushName' in payload_data:
+                    push_name = payload_data['pushName']
+                
+                # Instance do payload principal
+                if 'instance' in data:
+                    instance = data['instance']
+
+            # FORMATO ANTIGO: Verificar se é o formato com 'query' e 'inputs'
+            elif 'query' in data and 'inputs' in data:
                 message = data['query']
                 message_type = 'text'
                 # Extrair informações de inputs
@@ -495,9 +523,9 @@ def extract_evolution_data(data):
                     remote_jid = inputs.get('remoteJid', 'unknown')
                     push_name = inputs.get('pushName', 'Cliente')
                     instance = inputs.get('instanceName', 'default')
-                logger.info("Novo formato Evolution API detectado")
+                logger.info("📦 Formato antigo Evolution API detectado")
 
-            # Verificar se é mensagem de imagem
+            # Verificar se é mensagem de imagem (formato antigo)
             elif ('message' in data and isinstance(data['message'], dict) and
                     'imageMessage' in data['message'] and 
                     'base64' in data['message']):
@@ -505,7 +533,7 @@ def extract_evolution_data(data):
                 message_type = 'image'
                 logger.info("🖼️ Mensagem de imagem detectada")
 
-            # Verificar se é mensagem de áudio
+            # Verificar se é mensagem de áudio (formato antigo)
             elif ('message' in data and isinstance(data['message'], dict) and
                     'audioMessage' in data['message'] and 
                     'base64' in data['message']):
@@ -513,14 +541,14 @@ def extract_evolution_data(data):
                 message_type = 'audio'
                 logger.info("📻 Mensagem de áudio detectada")
 
-            # Opção 1: data.message.conversation (texto)
+            # Opção 1: data.message.conversation (texto) - formato antigo
             elif 'message' in data and isinstance(data['message'], dict):
                 if 'conversation' in data['message']:
                     message = data['message']['conversation']
                 elif 'text' in data['message']:
                     message = data['message']['text']
 
-            # Opção 2: data.text ou data.message direto
+            # Opção 2: data.text ou data.message direto - formato antigo
             elif 'text' in data:
                 message = data['text']
             elif 'message' in data and isinstance(data['message'], str):
