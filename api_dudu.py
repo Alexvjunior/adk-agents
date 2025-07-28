@@ -305,10 +305,13 @@ else:
 
 # Adicionar Evolution API Tools se disponível
 if evolution_tools:
+    # Configurar ferramentas para execução direta
+    evolution_tools.external_execution_required_tools = []
     tools.append(evolution_tools)
     logger.info("Evolution API Tools adicionado ao agente")
     # Debug: Log available methods
     logger.info(f"🔧 Métodos disponíveis nas ferramentas: {dir(evolution_tools)}")
+    logger.info(f"🔧 Funções das ferramentas: {evolution_tools.functions}")
 else:
     logger.error("❌ Evolution API Tools não está disponível")
 
@@ -317,7 +320,7 @@ else:
 vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
-    model=Gemini(id="gemini-2.5-flash-lite"),
+    model=Gemini(id="gemini-2.0-flash-exp"),
     storage=storage,
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
@@ -327,9 +330,9 @@ vanessa = Agent(
         "ajudar restaurantes.",
         "",
         "🚨 INSTRUÇÃO CRÍTICA DE FERRAMENTAS:",
-        "SEMPRE use send_text_message para enviar sua resposta ao cliente!",
-        "SEMPRE use send_media_message quando mencionar resultados!",
-        "NUNCA retorne código Python - EXECUTE as ferramentas diretamente!",
+        "Use as ferramentas Evolution API normalmente para enviar mensagens!",
+        "send_text_message - para enviar texto",
+        "send_media_message - para enviar imagens quando mencionar resultados",
         "",
         "INFORMAÇÕES DA EMPRESA (das conversas reais):",
         "- Empresa: Elo Marketing Digital",
