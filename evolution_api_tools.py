@@ -155,7 +155,7 @@ class EvolutionApiTools(Toolkit):
         Args:
             number: Número do destinatário (formato: 5511999999999)
             media_type: Tipo de mídia (image, video, audio, document)
-            media: Conteúdo da mídia (base64 ou URL)
+            media: Conteúdo da mídia (base64) OU caminho para arquivo local
             file_name: Nome do arquivo (opcional)
             caption: Legenda da mídia (opcional)
             delay: Delay em milissegundos (opcional)
@@ -175,13 +175,34 @@ class EvolutionApiTools(Toolkit):
                 types_str = ', '.join(valid_types)
                 return f"❌ Tipo de mídia inválido. Use: {types_str}"
             
+            # Verificar se media é um caminho de arquivo ou base64
+            media_base64 = media
+            if media.startswith('knowledge/') or '/' in media or '\\' in media:
+                # É um caminho de arquivo - converter para base64
+                try:
+                    import base64
+                    import os
+                    
+                    if not os.path.exists(media):
+                        return f"❌ Arquivo não encontrado: {media}"
+                    
+                    with open(media, 'rb') as file:
+                        media_content = file.read()
+                        media_base64 = base64.b64encode(media_content).decode('utf-8')
+                        
+                    logger.info(f"✅ Arquivo {media} convertido para base64 ({len(media_base64)} chars)")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erro ao ler arquivo {media}: {e}")
+                    return f"❌ Erro ao ler arquivo {media}: {str(e)}"
+            
             endpoint = f"message/sendMedia/{self.config.instance}"
             
             # Estrutura correta: campos diretos sem wrapper mediaMessage
             data = {
                 "number": number,
                 "mediatype": media_type,  # minúsculo, campo direto
-                "media": media
+                "media": media_base64
             }
             
             if file_name:

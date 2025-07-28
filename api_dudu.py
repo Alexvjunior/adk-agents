@@ -413,32 +413,56 @@ vanessa = Agent(
         "- Use send_media_message para enviar imagens, vídeos ou documentos",
         "- Use check_whatsapp_number para verificar se um número está no WhatsApp",
         "- Formato de número: 5548999999999 (código país + DDD + número)",
-        "- Para enviar imagens, use a ferramenta send_media_message com media_type='image'",
         "",
-        "🎯 IMPORTANTE - USO ATIVO DAS FERRAMENTAS WHATSAPP:",
-        "SEMPRE que o cliente demonstrar interesse ou quando apropriado:",
-        "1. ENVIE mensagens de follow-up via WhatsApp usando send_text_message",
-        "2. ENVIE relatórios e visualizações via send_media_message quando falar de resultados",
-        "3. IMAGENS DISPONÍVEIS na pasta knowledge para enviar:",
-        "   - 'knowledge/relatorio.jpg' - Relatório de resultados dos clientes",
-        "   - 'knowledge/visualizacao.jpg' - Gráfico de visualizações e crescimento",
+        "🚨 REGRA OBRIGATÓRIA - USE AS FERRAMENTAS SEMPRE:",
+        "QUANDO mencionar 'R$ 877.000' ou qualquer resultado financeiro:",
+        "→ IMEDIATAMENTE chame send_media_message com knowledge/relatorio.jpg",
         "",
-        "📊 QUANDO ENVIAR IMAGENS VIA WHATSAPP:",
-        "- Ao mencionar resultados de R$ 877.000: ENVIE knowledge/relatorio.jpg",
-        "- Ao falar de crescimento de 300%: ENVIE knowledge/visualizacao.jpg", 
-        "- Use caption explicativa: 'Aqui estão os resultados reais dos nossos clientes'",
+        "QUANDO mencionar '300%' ou qualquer crescimento:",
+        "→ IMEDIATAMENTE chame send_media_message com knowledge/visualizacao.jpg", 
         "",
-        "💬 ESTRATÉGIA DE MENSAGENS WHATSAPP:",
-        "- Após resposta interessada: ENVIE mensagem de follow-up",
-        "- Após apresentar pitch: ENVIE comprovação visual (imagens)",
-        "- Antes de agendar: ENVIE resumo dos benefícios",
-        "- SEMPRE use as ferramentas para engajar ativamente o cliente",
+        "QUANDO cliente pedir 'comprovação' ou 'resultados' ou 'relatórios':",
+        "→ IMEDIATAMENTE chame send_media_message para AMBAS as imagens",
+        "",
+        "🎯 INSTRUÇÕES ESPECÍFICAS DE USO:",
+        "1. Sempre extraia o número do remoteJid (remova '@s.whatsapp.net')",
+        "2. Use media_type='image' para todas as imagens",
+        "3. Use caption descritivo para cada imagem",
+        "4. NÃO mencione que está enviando - apenas envie",
+        "",
+        "📊 EXEMPLOS PRÁTICOS OBRIGATÓRIOS:",
+        "Se falar 'R$ 877.000' → USE: send_media_message(number=numero_cliente, media_type='image', media='knowledge/relatorio.jpg', caption='Resultados reais dos clientes')",
+        "Se falar '300%' → USE: send_media_message(number=numero_cliente, media_type='image', media='knowledge/visualizacao.jpg', caption='Crescimento dos clientes')",
         "",
         "🚨 REGRA CRÍTICA - FERRAMENTAS WHATSAPP:",
         "- NÃO apenas responda, TAMBÉM aja usando as ferramentas",
         "- SEMPRE que falar de resultados, COMPROVE com imagens via WhatsApp",
         "- SEJA PROATIVA: envie materiais sem o cliente pedir",
         "- MANTENHA o cliente engajado com conteúdo visual",
+        "",
+        "⚡ AÇÕES OBRIGATÓRIAS - EXECUTE SEMPRE:",
+        "",
+        "SITUAÇÃO 1: Quando você mencionar 'R$ 877.000' em sua resposta",
+        "AÇÃO: Chame send_media_message imediatamente com:",
+        "- number = extrair número do remoteJid (remover '@s.whatsapp.net')",
+        "- media_type = 'image'", 
+        "- media = 'knowledge/relatorio.jpg'",
+        "- caption = 'Aqui estão os resultados reais dos nossos clientes'",
+        "",
+        "SITUAÇÃO 2: Quando você mencionar '300%' ou 'crescimento' em sua resposta", 
+        "AÇÃO: Chame send_media_message imediatamente com:",
+        "- number = extrair número do remoteJid (remover '@s.whatsapp.net')",
+        "- media_type = 'image'",
+        "- media = 'knowledge/visualizacao.jpg'", 
+        "- caption = 'Visualização do crescimento dos nossos clientes'",
+        "",
+        "SITUAÇÃO 3: Quando cliente pedir 'comprovação', 'resultados', 'relatórios'",
+        "AÇÃO: Chame send_media_message DUAS VEZES (para ambas as imagens)",
+        "",
+        "🎯 LEMBRE-SE: Você TEM as ferramentas Evolution API disponíveis!",
+        "- send_media_message está na sua lista de ferramentas",
+        "- Use-a ATIVAMENTE para enviar comprovações visuais",
+        "- NÃO seja passiva - DEMONSTRE os resultados com imagens!",
         "",
         "- Sempre consulte sua base de conhecimento para respostas precisas"
     ],
@@ -637,38 +661,86 @@ async def ask_vanessa(request: Request):
 
         # Usar session_id baseado no remote_jid para manter histórico
         session_id = f"elo-{remote_jid}"
+        
+        # Extrair número do WhatsApp do remoteJid para as ferramentas
+        whatsapp_number = remote_jid.replace("@s.whatsapp.net", "")
+        logger.info(f"📱 Número extraído para ferramentas: {whatsapp_number}")
 
         # Enviar para Vanessa com session_id (histórico automático)
         logger.info("🎯 Vanessa consultando base de conhecimento e "
                     "respondendo...")
         
+        # Criar instruções dinâmicas com o número específico do cliente
+        dynamic_instructions = f"""
+CONTEXTO ATUAL:
+- Cliente: {push_name}
+- Número WhatsApp: {whatsapp_number}
+
+INSTRUÇÕES DE FERRAMENTAS:
+Quando usar send_media_message, use sempre:
+- number: {whatsapp_number}
+- media_type: 'image'
+
+Para resultados financeiros (R$ 877.000):
+- media: 'knowledge/relatorio.jpg'
+- caption: 'Aqui estão os resultados reais dos nossos clientes'
+
+Para crescimento (300%):
+- media: 'knowledge/visualizacao.jpg' 
+- caption: 'Visualização do crescimento dos nossos clientes'
+
+SEMPRE use as ferramentas quando mencionar resultados!
+"""
+        
         # Processar baseado no tipo de mensagem
-        if message_type == 'image' and has_image:
-            logger.info("🖼️ Processando mensagem de imagem")
-            response = vanessa.run(
-                images=[evolution_data['image_base64']], 
-                session_id=session_id
-            )
-        elif message_type == 'audio' and has_audio:
-            logger.info("📻 Processando mensagem de áudio")
-            response = vanessa.run(
-                audio=evolution_data['audio_base64'], 
-                session_id=session_id
-            )
-        else:
-            logger.info("📝 Processando mensagem de texto")
-            response = vanessa.run(
-                evolution_data['message'], 
-                session_id=session_id
-            )
+        try:
+            if message_type == 'image' and has_image:
+                logger.info("🖼️ Processando mensagem de imagem")
+                response = vanessa.run(
+                    images=[evolution_data['image_base64']], 
+                    session_id=session_id
+                )
+            elif message_type == 'audio' and has_audio:
+                logger.info("📻 Processando mensagem de áudio")
+                response = vanessa.run(
+                    audio=evolution_data['audio_base64'], 
+                    session_id=session_id
+                )
+            else:
+                logger.info("📝 Processando mensagem de texto")
+                # Incluir instruções dinâmicas na mensagem
+                message_with_context = f"{dynamic_instructions}\n\nMENSAGEM DO CLIENTE: {evolution_data['message']}"
+                response = vanessa.run(
+                    message_with_context, 
+                    session_id=session_id
+                )
+            
+            logger.info(f"🔍 Resposta do agente - Tipo: {type(response)}")
+            if hasattr(response, 'content'):
+                logger.info(f"🔍 Content: {response.content}")
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                logger.info(f"🔧 Tool calls detectados: {len(response.tool_calls)}")
+                for i, tool_call in enumerate(response.tool_calls):
+                    logger.info(f"🔧 Tool call {i+1}: {tool_call}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao executar agente: {e}")
+            logger.error(f"❌ Tipo do erro: {type(e)}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            response = None
 
         # Extrair apenas o conteúdo da mensagem com verificação de None
         if response is None:
             message = "Erro: Resposta vazia do agente"
         elif hasattr(response, 'content') and response.content:
             message = response.content
+        elif hasattr(response, 'content') and response.content is None:
+            # Agente pode ter usado ferramentas sem retornar texto
+            message = "Perfeito! Vou te enviar os materiais de comprovação."
         else:
-            message = str(response) if response else "Erro: Resposta inválida"
+            # Fallback para outros casos
+            message = "Aguarde um momento, estou processando sua solicitação."
         
         # Garantir que message nunca seja None
         if message is None:
