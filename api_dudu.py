@@ -476,7 +476,7 @@ vanessa = Agent(
         "- Sempre consulte sua base de conhecimento para respostas precisas"
     ],
     markdown=True,
-    show_tool_calls=False,
+    show_tool_calls=True,
 )
 
 
