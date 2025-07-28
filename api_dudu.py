@@ -167,7 +167,7 @@ followup_manager = FollowUpManager()
 
 # Usar variável de ambiente para Google API Key
 google_api_key = os.getenv("GOOGLE_API_KEY", 
-                           "AIzaSyD9tPWukHuZFFbSNjTNfuIbH_PQwa3uEZQ")
+                           "AIzaSyCKTbPQDtAhUI9VWQH26_v2KJW3146Xe20")
 os.environ["GOOGLE_API_KEY"] = google_api_key
 
 storage = SqliteAgentStorage(table_name="sessions", db_file="sessions.db")
