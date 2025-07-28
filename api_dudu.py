@@ -222,19 +222,6 @@ knowledge = KnowledgeTools(
 def create_google_calendar_tools():
     """Cria GoogleCalendarTools usando variáveis de ambiente"""
     try:
-        # Verificar se todas as variáveis necessárias estão disponíveis
-        required_vars = [
-            "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", 
-            "GOOGLE_PROJECT_ID", "GOOGLE_REFRESH_TOKEN"
-        ]
-        
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
-        if missing_vars:
-            logger.error(f"❌ Variáveis de ambiente faltando: {missing_vars}")
-            return None
-        
-        logger.info("✅ Todas as variáveis do Google Calendar encontradas")
-        
         # Criar estrutura de credenciais a partir de variáveis de ambiente
         credentials_dict = {
             "installed": {
@@ -260,11 +247,7 @@ def create_google_calendar_tools():
             "client_id": os.getenv("GOOGLE_CLIENT_ID"),
             "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
             "scopes": ["https://www.googleapis.com/auth/calendar"],
-            "universe_domain": "googleapis.com",
-            "account": "",
-            "type": "authorized_user",
-            "token": None,  # Será renovado automaticamente
-            "expiry": None  # Será definido após refresh
+            "universe_domain": "googleapis.com"
         }
         
         # Criar arquivos temporários para as credenciais
@@ -337,7 +320,7 @@ else:
 vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
-    model=Gemini(id="gemini-2.5-flash-lite"),
+    model=Gemini(id="gemini-2.0-flash-exp"),
     storage=storage,
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
