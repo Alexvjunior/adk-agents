@@ -313,7 +313,7 @@ if evolution_tools:
 vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
-    model=Gemini(id="gemini-2.0-flash"),
+    model=Gemini(id="gemini-2.5-flash-lite"),
     storage=storage,
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
@@ -780,7 +780,7 @@ SEMPRE use as ferramentas quando mencionar resultados!
                 logger.info(f"⏰ Follow-up automático agendado para {remote_jid}")
 
         return {
-            "message": message,
+            "status": message,
         }
 
     except Exception as e:
