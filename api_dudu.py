@@ -307,6 +307,10 @@ else:
 if evolution_tools:
     tools.append(evolution_tools)
     logger.info("Evolution API Tools adicionado ao agente")
+    # Debug: Log available methods
+    logger.info(f"🔧 Métodos disponíveis nas ferramentas: {dir(evolution_tools)}")
+else:
+    logger.error("❌ Evolution API Tools não está disponível")
 
 
 # Criar agente Vanessa - Vendedora da Elo Marketing
@@ -321,6 +325,11 @@ vanessa = Agent(
     instructions=[
         "Você é Vanessa, vendedora ATACANTE da Elo Marketing especializada em "
         "ajudar restaurantes.",
+        "",
+        "🚨 INSTRUÇÃO CRÍTICA DE FERRAMENTAS:",
+        "SEMPRE use send_text_message para enviar sua resposta ao cliente!",
+        "SEMPRE use send_media_message quando mencionar resultados!",
+        "NUNCA retorne código Python - EXECUTE as ferramentas diretamente!",
         "",
         "INFORMAÇÕES DA EMPRESA (das conversas reais):",
         "- Empresa: Elo Marketing Digital",
@@ -808,7 +817,7 @@ SEMPRE use as ferramentas quando mencionar resultados!
                 logger.info(f"⏰ Follow-up automático agendado para {remote_jid}")
 
         return {
-            "message": "",
+            "message": "Resposta enviada via WhatsApp",
         }
 
     except Exception as e:
@@ -840,3 +849,25 @@ async def status():
         },
         "database": "sessions.db (SQLite)"
     }
+
+
+@app.post("/test-evolution")
+async def test_evolution():
+    """Testa as ferramentas Evolution API diretamente"""
+    try:
+        if not evolution_tools:
+            return {"error": "Evolution API Tools não configurado"}
+        
+        # Teste direto das ferramentas
+        result = evolution_tools.send_text_message(
+            number="5548996438314",
+            text="Teste direto das ferramentas Evolution API!"
+        )
+        
+        return {
+            "status": "sucesso",
+            "result": result,
+            "tools_available": dir(evolution_tools)
+        }
+    except Exception as e:
+        return {"error": str(e)}
