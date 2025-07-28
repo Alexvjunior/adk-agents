@@ -780,7 +780,7 @@ SEMPRE use as ferramentas quando mencionar resultados!
                 logger.info(f"⏰ Follow-up automático agendado para {remote_jid}")
 
         return {
-            "status": message,
+            "message": "",
         }
 
     except Exception as e:
