@@ -101,8 +101,8 @@ def load_knowledge_base_safely():
     """
     import time
 
-reader = TextReader(chunk=True)
-knowledge_dir = Path("knowledge/")
+    reader = TextReader(chunk=True)
+    knowledge_dir = Path("knowledge/")
     
     if not knowledge_dir.exists():
         logger.warning("⚠️ Diretório 'knowledge/' não encontrado")
@@ -110,7 +110,7 @@ knowledge_dir = Path("knowledge/")
     
     # Listar todos os arquivos para processar
     files_to_process = []
-for file_path in knowledge_dir.iterdir():
+    for file_path in knowledge_dir.iterdir():
         if file_path.is_file() and file_path.suffix in ['.txt', '.md']:
             files_to_process.append(file_path)
     
@@ -145,7 +145,7 @@ for file_path in knowledge_dir.iterdir():
                 pass
             
             # Ler e processar o arquivo
-        documents = reader.read(file_path)
+            documents = reader.read(file_path)
             
             # Processar documentos em lotes pequenos
             batch_size = 2  # Processar 2 documentos por vez
@@ -964,11 +964,11 @@ SEMPRE use as ferramentas quando mencionar resultados!
                     session_id=session_id
                 )
             else:
-                    logger.info("📝 Processando mensagem de texto (fallback)")
-                    message_with_context = (
-                        f"{dynamic_instructions}\n\n"
-                        f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
-                    )
+                logger.info("📝 Processando mensagem de texto (fallback)")
+                message_with_context = (
+                    f"{dynamic_instructions}\n\n"
+                    f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
+                )
                 response = vanessa.run(
                     message_with_context, 
                     session_id=session_id
@@ -978,8 +978,8 @@ SEMPRE use as ferramentas quando mencionar resultados!
             if hasattr(response, 'content'):
                 logger.info(f"🔍 Content: {response.content}")
             if hasattr(response, 'tool_calls') and response.tool_calls:
-                    logger.info(f"🔧 Tool calls detectados: "
-                               f"{len(response.tool_calls)}")
+                logger.info(f"🔧 Tool calls detectados: "
+                           f"{len(response.tool_calls)}")
                 for i, tool_call in enumerate(response.tool_calls):
                     logger.info(f"🔧 Tool call {i+1}: {tool_call}")
             
