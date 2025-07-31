@@ -320,7 +320,7 @@ else:
 vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
-    model=Gemini(id="gemini-1.5-flash"),
+    model=Gemini(id="gemini-2.5-pro"),
     storage=storage,
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
