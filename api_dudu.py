@@ -1083,8 +1083,10 @@ async def test_evolution():
 async def enviar_lista_restaurantes(file: UploadFile = File(...)):
     """
     Endpoint para processar lista de restaurantes e enviar primeira mensagem
-    Formato esperado do CSV: nome,numero
+    Formato esperado do CSV: nome,numero OU numero,nome (detecta automaticamente)
     """
+    import time
+    
     try:
         # Verificar se o arquivo é CSV
         if not file.filename.endswith('.csv'):
@@ -1105,9 +1107,27 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
             "É de um restaurante? Vocês têm cardápio ou menu online?"
         )
         
+        def detect_phone_number(text):
+            """Detecta se um texto é um número de telefone"""
+            clean_text = ''.join(filter(str.isdigit, str(text)))
+            return len(clean_text) >= 8 and len(clean_text) <= 15
+        
+        def format_phone_number(numero):
+            """Formata número de telefone para o padrão Evolution API"""
+            # Limpar número (remover caracteres especiais)
+            numero_limpo = ''.join(filter(str.isdigit, str(numero)))
+            
+            # Adicionar código do país (55) se não tiver
+            if not numero_limpo.startswith('55'):
+                numero_limpo = '55' + numero_limpo
+                
+            return numero_limpo
+        
+        envios_realizados = 0
+        
         for i, row in enumerate(csv_reader):
             # Pular header se existir
-            if i == 0 and ('nome' in row[0].lower() or 'name' in row[0].lower()):
+            if i == 0 and ('nome' in str(row[0]).lower() or 'name' in str(row[0]).lower()):
                 continue
                 
             if len(row) < 2:
@@ -1117,18 +1137,36 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                 })
                 continue
             
-            nome = row[0].strip()
-            numero = row[1].strip()
+            # Detectar automaticamente qual coluna é nome e qual é número
+            col1, col2 = str(row[0]).strip(), str(row[1]).strip()
             
-            # Limpar número (remover caracteres especiais)
-            numero_limpo = ''.join(filter(str.isdigit, numero))
+            if detect_phone_number(col1):
+                # Primeira coluna é número
+                numero_original = col1
+                nome = col2
+            elif detect_phone_number(col2):
+                # Segunda coluna é número
+                numero_original = col2
+                nome = col1
+            else:
+                restaurantes_erro.append({
+                    "linha": i + 1,
+                    "col1": col1,
+                    "col2": col2,
+                    "erro": "Nenhuma das colunas parece ser um número de telefone"
+                })
+                continue
             
-            if len(numero_limpo) < 10:
+            # Formatar número
+            numero_formatado = format_phone_number(numero_original)
+            
+            if len(numero_formatado) < 12:  # 55 + DDD (2) + número (8/9)
                 restaurantes_erro.append({
                     "linha": i + 1,
                     "nome": nome,
-                    "numero": numero,
-                    "erro": "Número muito curto"
+                    "numero": numero_original,
+                    "numero_formatado": numero_formatado,
+                    "erro": "Número muito curto após formatação"
                 })
                 continue
             
@@ -1140,7 +1178,7 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                 # Verificar se já existe
                 cursor.execute(
                     "SELECT id, primeira_mensagem_enviada FROM restaurantes WHERE numero = ?",
-                    (numero_limpo,)
+                    (numero_formatado,)
                 )
                 existing = cursor.fetchone()
                 
@@ -1149,7 +1187,7 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                         restaurantes_erro.append({
                             "linha": i + 1,
                             "nome": nome,
-                            "numero": numero_limpo,
+                            "numero": numero_formatado,
                             "erro": "Mensagem já enviada anteriormente"
                         })
                         conn.close()
@@ -1159,18 +1197,20 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                     cursor.execute(
                         """INSERT INTO restaurantes (nome, numero) 
                            VALUES (?, ?)""",
-                        (nome, numero_limpo)
+                        (nome, numero_formatado)
                     )
                 
-                # Para teste, enviar apenas para o número especificado
-                numero_envio = "5548996438314"  # Número de teste
+                # Intervalo de 1 minuto entre envios (exceto o primeiro)
+                if envios_realizados > 0:
+                    logger.info(f"⏱️ Aguardando 1 minuto antes do próximo envio...")
+                    time.sleep(60)  # 1 minuto = 60 segundos
                 
                 if evolution_tools:
                     try:
-                        # Enviar mensagem
+                        # Enviar para o número real (não mais teste)
                         result = evolution_tools.send_text_message(
-                            number=numero_envio,
-                            text=f"TESTE - {nome}: {primeira_mensagem}"
+                            number=numero_formatado,
+                            text=primeira_mensagem
                         )
                         
                         # Marcar como enviado no banco
@@ -1178,29 +1218,32 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                             """UPDATE restaurantes 
                                SET primeira_mensagem_enviada = TRUE, data_envio = ?
                                WHERE numero = ?""",
-                            (datetime.now(), numero_limpo)
+                            (datetime.now(), numero_formatado)
                         )
                         
                         restaurantes_processados.append({
                             "nome": nome,
-                            "numero": numero_limpo,
-                            "numero_teste": numero_envio,
+                            "numero_original": numero_original,
+                            "numero_formatado": numero_formatado,
                             "status": "enviado",
                             "result": str(result)
                         })
+                        
+                        envios_realizados += 1
+                        logger.info(f"✅ Mensagem enviada para {nome} ({numero_formatado})")
                         
                     except Exception as e:
                         restaurantes_erro.append({
                             "linha": i + 1,
                             "nome": nome,
-                            "numero": numero_limpo,
+                            "numero": numero_formatado,
                             "erro": f"Erro ao enviar: {str(e)}"
                         })
                 else:
                     restaurantes_erro.append({
                         "linha": i + 1,
                         "nome": nome,
-                        "numero": numero_limpo,
+                        "numero": numero_formatado,
                         "erro": "Evolution API não configurada"
                     })
                 
@@ -1211,14 +1254,14 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
                 restaurantes_erro.append({
                     "linha": i + 1,
                     "nome": nome,
-                    "numero": numero_limpo,
+                    "numero": numero_formatado,
                     "erro": "Número já existe no banco"
                 })
             except Exception as e:
                 restaurantes_erro.append({
                     "linha": i + 1,
                     "nome": nome,
-                    "numero": numero,
+                    "numero": numero_original,
                     "erro": str(e)
                 })
         
@@ -1227,9 +1270,11 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
             "total_linhas": i + 1,
             "processados": len(restaurantes_processados),
             "erros": len(restaurantes_erro),
+            "envios_realizados": envios_realizados,
+            "tempo_estimado_minutos": envios_realizados,
             "restaurantes_processados": restaurantes_processados,
             "restaurantes_erro": restaurantes_erro,
-            "observacao": "MODO TESTE: Todas as mensagens foram enviadas para 5548996438314"
+            "observacao": f"Enviadas {envios_realizados} mensagens com intervalo de 1 minuto"
         }
         
     except Exception as e:
