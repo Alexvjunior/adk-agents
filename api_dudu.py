@@ -10,7 +10,6 @@ from fastapi import FastAPI, Request, UploadFile, File
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.storage.agent.sqlite import SqliteAgentStorage
-from agno.knowledge.text import TextKnowledgeBase
 from agno.tools.knowledge import KnowledgeTools
 from agno.tools.googlecalendar import GoogleCalendarTools
 from agno.tools.shell import ShellTools
@@ -18,7 +17,7 @@ from agno.document.chunking.recursive import RecursiveChunking
 from agno.knowledge.agent import AgentKnowledge
 from agno.vectordb.chroma import ChromaDb
 from agno.document.reader.text_reader import TextReader
-from agno.embedder.google import GeminiEmbedder
+from agno.embedder.openai import OpenAIEmbedder  # Mudança para OpenAI
 from pathlib import Path
 from evolution_api_tools import EvolutionApiTools
 
@@ -72,50 +71,50 @@ else:
 
 storage = SqliteAgentStorage(table_name="sessions", db_file="sessions.db")
 
-knowledge_base = TextKnowledgeBase(
-    path="knowledge/",
-    chunking_strategy=RecursiveChunking(
-        chunk_size=1000, overlap=100
-    ),
-)
-
-
+# 🚀 SISTEMA DE CONHECIMENTO OTIMIZADO - Usando embeddings da OpenAI
 agent_knowledge = AgentKnowledge(
-
     vector_db=ChromaDb(
         collection="elo_marketing_knowledge",
-        embedder=GeminiEmbedder(
-            id="text-embedding-004",  # Modelo de embedding do Google
-            # Usa sua API key existente
-            api_key=os.environ.get("GOOGLE_API_KEY")
+        embedder=OpenAIEmbedder(
+            id="text-embedding-3-large",  # Modelo mais avançado da OpenAI
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            dimensions=3072,  # Dimensões máximas para melhor precisão
         ),
-        path="knowledge_db",
+        path="knowledge_db", 
         persistent_client=True,
     ),
     chunking_strategy=RecursiveChunking(
-        chunk_size=1000,
-        overlap=100
+        chunk_size=800,  # Otimizado para o modelo
+        overlap=200,     # Maior overlap para melhor contexto
     ),
-    num_documents=5,
+    num_documents=10,  # Aumentado para mais contexto
 )
 
+# Processar documentos do diretório knowledge/
 reader = TextReader(chunk=True)
 knowledge_dir = Path("knowledge/")
-for file_path in knowledge_dir.iterdir():
-    if file_path.is_file() and file_path.suffix == '.txt':  # Só arquivos .txt
-        print(f"Processando arquivo: {file_path}")
-        documents = reader.read(file_path)
-        for doc in documents:
-            print(f"Documento adicionado: {doc.name}")
-            agent_knowledge.add_document_to_knowledge_base(document=doc)
+if knowledge_dir.exists():
+    for file_path in knowledge_dir.iterdir():
+        if file_path.is_file() and file_path.suffix in ['.txt', '.md']:
+            print(f"📄 Processando arquivo: {file_path}")
+            documents = reader.read(file_path)
+            for doc in documents:
+                print(f"✅ Documento adicionado: {doc.name}")
+                agent_knowledge.add_document_to_knowledge_base(document=doc)
+else:
+    logger.warning("⚠️ Diretório 'knowledge/' não encontrado")
 
-knowledge = KnowledgeTools(
-    knowledge=knowledge_base,
+# 🔧 FERRAMENTAS DE CONHECIMENTO - Usando o mesmo sistema
+knowledge_tools = KnowledgeTools(
+    knowledge=agent_knowledge,  # Usando o mesmo sistema do agente
     think=True,
     search=True,
     analyze=True,
-    instructions="Use sempre as conversas reais para responder perguntas. Procure por "
-                 "respostas específicas no knowledge base antes de responder.",
+    instructions=(
+        "Use sempre as conversas reais para responder perguntas. "
+        "Procure por respostas específicas no knowledge base antes de "
+        "responder. Priorize informações precisas e atualizadas."
+    ),
 )
 
 
@@ -194,7 +193,7 @@ except Exception as e:
     evolution_tools = None
 
 # Definir ferramentas baseado na disponibilidade do calendário
-tools = [shell_tools, knowledge]
+tools = [shell_tools, knowledge_tools]
 if calendar:
     tools.append(calendar)
     logger.info("Google Calendar configurado com sucesso")
@@ -221,7 +220,7 @@ vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
     model=OpenAIChat(
-        id="gpt-4-mini",
+        id="gpt-4o",  # Atualizado para GPT-4o (mais avançado)
         temperature=0.7,
         max_tokens=1000,
         top_p=0.9,
