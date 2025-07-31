@@ -4,7 +4,10 @@ import json
 import tempfile
 import sqlite3
 import csv
+import asyncio
 from datetime import datetime
+from collections import defaultdict
+from typing import Dict, List
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File
 from agno.agent import Agent
@@ -319,6 +322,116 @@ else:
     logger.error("❌ Evolution API Tools não está disponível")
 
 
+# 🚀 SISTEMA DE DEBOUNCE PARA MENSAGENS CONSECUTIVAS
+# Evita processamento individual de mensagens enviadas rapidamente
+user_message_queues: Dict[str, List] = defaultdict(list)
+user_timers: Dict[str, asyncio.Task] = {}
+DEBOUNCE_DELAY = 5.0  # 5 segundos para aguardar mensagens consecutivas
+
+
+async def process_user_messages_batch(user_id: str, whatsapp_number: str):
+    """
+    Processa todas as mensagens acumuladas de um usuário em lote
+    """
+    try:
+        # Aguardar o delay de debounce
+        await asyncio.sleep(DEBOUNCE_DELAY)
+        
+        # Pegar todas as mensagens acumuladas
+        if (user_id not in user_message_queues or 
+                not user_message_queues[user_id]):
+            return
+            
+        messages = user_message_queues[user_id].copy()
+        user_message_queues[user_id].clear()
+        
+        logger.info(f"🔄 Processando {len(messages)} mensagens em lote "
+                    f"para {user_id}")
+        
+        # Combinar todas as mensagens
+        combined_texts = []
+        push_name = "Cliente"
+        
+        for msg in messages:
+            if msg.get('text'):
+                combined_texts.append(msg['text'])
+            if msg.get('push_name'):
+                push_name = msg['push_name']
+        
+        if not combined_texts:
+            logger.warning("⚠️ Nenhuma mensagem de texto para processar")
+            return
+            
+        combined_text = " | ".join(combined_texts)
+        last_message = messages[-1]
+        
+        # Criar instruções dinâmicas para processamento em lote
+        dynamic_instructions = f"""
+CONTEXTO ATUAL:
+- Cliente: {push_name}
+- Número WhatsApp: {whatsapp_number}
+- Total de mensagens recebidas consecutivamente: {len(messages)}
+
+📢 IMPORTANTE: O cliente enviou {len(messages)} mensagens seguidas:
+{' | '.join([f'"{text}"' for text in combined_texts])}
+
+PROCESSE TODAS as informações juntas e responda UMA ÚNICA VEZ 
+via send_text_message!
+
+🖼️ ENVIO DE IMAGENS AUTOMÁTICO:
+Se mencionar resultados ou comprovação, SEMPRE envie imagens também:
+
+Para resultados financeiros (R$ 877.000):
+send_media_message(number='{whatsapp_number}', media_type='image',
+media='knowledge/relatorio.jpg', caption='Resultados reais dos 
+nossos clientes!')
+
+Para crescimento (300%):
+send_media_message(number='{whatsapp_number}', media_type='image', 
+media='knowledge/visualizacao.jpg', caption='Visualização do 
+crescimento!')
+
+🎯 REGRA: Combine texto + imagem para maior impacto visual!
+
+Use send_text_message(number='{whatsapp_number}', 
+text='sua_resposta_completa')
+
+🚨 REGRA CRÍTICA: SEMPRE use send_text_message para TODA resposta!
+NUNCA retorne apenas texto - SEMPRE execute send_text_message!
+
+{last_message.get('original_instructions', '')}
+"""
+        
+        # Processar com o agente
+        message_with_context = (
+            f"{dynamic_instructions}\n\n"
+            f"MENSAGENS DO CLIENTE: {combined_text}"
+        )
+        
+        session_id = f"elo-{last_message['remote_jid']}"
+        
+        logger.info(f"🤖 Enviando para agente: sessão {session_id}")
+        response = vanessa.run(message_with_context, session_id=session_id)
+        
+        logger.info(f"✅ Processamento em lote concluído para {user_id}")
+        
+        if hasattr(response, 'content') and response.content:
+            logger.info(f"📝 Resposta do agente: {response.content[:100]}...")
+        
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            logger.info(f"🔧 Tool calls executados: {len(response.tool_calls)}")
+        
+    except asyncio.CancelledError:
+        logger.info(f"⏹️ Processamento cancelado para {user_id} "
+                    f"(nova mensagem recebida)")
+    except Exception as e:
+        logger.error(f"❌ Erro no processamento em lote para {user_id}: {e}")
+    finally:
+        # Limpar timer da lista
+        if user_id in user_timers:
+            del user_timers[user_id]
+
+
 # Criar agente Vanessa - Vendedora da Elo Marketing
 vanessa = Agent(
     name="Vanessa",
@@ -458,9 +571,44 @@ vanessa = Agent(
         "",
         "📱 FERRAMENTAS DE WHATSAPP OBRIGATÓRIAS:",
         "- SEMPRE use send_text_message para TODA resposta de texto",
-        "- Use send_media_message para enviar imagens quando mencionar resultados",
-        "- Use check_whatsapp_number para verificar se um número está no WhatsApp",
+        "- Use send_media_message para enviar imagens quando mencionar "
+        "resultados",
+        "- Use check_whatsapp_number para verificar se um número está no "
+        "WhatsApp",
         "- Formato de número: 5548999999999 (código país + DDD + número)",
+        "",
+        "🖼️ ENVIO DE IMAGENS OBRIGATÓRIO:",
+        "SEMPRE envie imagens via send_media_message quando:",
+        "- Cliente perguntar sobre resultados ou faturamento",
+        "- Cliente questionar se funciona ou pedir comprovação", 
+        "- Cliente demonstrar interesse mas ter dúvidas",
+        "- Cliente pedir para ver cases de sucesso",
+        "- Cliente perguntar sobre crescimento ou ROI",
+        "- Mencionar os R$ 877.000 de faturamento",
+        "- Mencionar o crescimento de 300%",
+        "- Cliente pedir exemplos visuais",
+        "",
+        "📸 IMAGENS DISPONÍVEIS - USE SEMPRE QUE APROPRIADO:",
+        "Para resultados financeiros (R$ 877.000):",
+        "send_media_message(number='[número]', media_type='image',",
+        "media='knowledge/relatorio.jpg', caption='Aqui estão os "
+        "resultados reais dos nossos clientes!')",
+        "",
+        "Para crescimento (300%):",
+        "send_media_message(number='[número]', media_type='image',",
+        "media='knowledge/visualizacao.jpg', caption='Visualização do "
+        "crescimento dos nossos clientes!')",
+        "",
+        "Para cases de sucesso:",
+        "send_media_message(number='[número]', media_type='image',",
+        "media='knowledge/cases.jpg', caption='Veja alguns dos nossos "
+        "cases de sucesso!')",
+        "",
+        "🎯 ESTRATÉGIA DE CONVENCIMENTO COM IMAGENS:",
+        "1. Primeira objeção → Envie relatorio.jpg",
+        "2. Dúvida sobre funcionamento → Envie visualizacao.jpg", 
+        "3. Interesse mas hesitação → Envie cases.jpg",
+        "4. SEMPRE combine texto + imagem para maior impacto",
         "",
         "🔥 REGRA FINAL ABSOLUTA:",
         "Para CADA resposta que você gerar, EXECUTE send_text_message!",
@@ -642,7 +790,7 @@ async def root():
 
 @app.post("/ask")
 async def ask_vanessa(request: Request):
-    """Conversa com Vanessa - Vendedora da Elo Marketing"""
+    """Conversa com Vanessa - Vendedora da Elo Marketing (com debounce)"""
     try:
         # Log completo do que estamos recebendo
         body = await request.body()
@@ -704,19 +852,16 @@ async def ask_vanessa(request: Request):
         logger.info(f"   - RemoteJid: {remote_jid}")
         logger.info(f"   - Nome do usuário: {push_name}")
 
-        # Usar session_id baseado no remote_jid para manter histórico
-        session_id = f"elo-{remote_jid}"
-        
         # Extrair número do WhatsApp do remoteJid para as ferramentas
         whatsapp_number = remote_jid.replace("@s.whatsapp.net", "")
         logger.info(f"📱 Número extraído para ferramentas: {whatsapp_number}")
 
-        # Enviar para Vanessa com session_id (histórico automático)
-        logger.info("🎯 Vanessa consultando base de conhecimento e "
-                    "respondendo...")
-        
-        # Criar instruções dinâmicas com o número específico do cliente
-        dynamic_instructions = f"""
+        # 🚀 SISTEMA DE DEBOUNCE - Processar mensagens de texto em lote
+        if message_type == 'text' and has_text:
+            user_id = remote_jid
+            
+            # Criar instruções dinâmicas originais para armazenar
+            original_instructions = f"""
 CONTEXTO ATUAL:
 - Cliente: {push_name}
 - Número WhatsApp: {whatsapp_number}
@@ -727,20 +872,6 @@ NÃO repita: "Oi, é do restaurante?" - vá direto ao acompanhamento!
 
 🆘 NÚMERO DE EMERGÊNCIA: 5548996438314
 Se houver problemas técnicos ou não conseguir agendar, redirecione!
-
-🚨 INSTRUÇÃO ESPECÍFICA PARA AGENDAMENTO:
-Se o cliente mencionar "reunião", "marcar", "agendar" ou similares,
-CONSULTE sua base de conhecimento 'calendário_agendamento.txt'
-SIGA EXATAMENTE o fluxo descrito no documento:
-1. PRIMEIRO: Execute shell_tools com ['date', '+%A, %d de %B de %Y'] para 
-saber que dia é HOJE
-2. SEGUNDO: Use list_events() para consultar agenda
-3. TERCEIRO: Sugira horários específicos FUTUROS baseados na disponibilidade REAL
-4. QUARTO: Quando cliente escolher, use create_event() com DATA CORRETA
-5. QUINTO: Confirme com link do Google Meet
-
-⚠️ NUNCA invente datas! SEMPRE consulte o sistema para saber que dia é hoje!
-NUNCA pergunte "qual horário prefere" sem sugerir opções específicas!
 
 INSTRUÇÕES DE FERRAMENTAS:
 Quando usar send_media_message, use sempre:
@@ -757,70 +888,150 @@ Para crescimento (300%):
 
 SEMPRE use as ferramentas quando mencionar resultados!
 """
+            
+            # Adicionar mensagem à queue do usuário
+            message_data = {
+                'text': evolution_data['message'],
+                'remote_jid': remote_jid,
+                'push_name': push_name,
+                'whatsapp_number': whatsapp_number,
+                'message_type': message_type,
+                'original_instructions': original_instructions,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            user_message_queues[user_id].append(message_data)
+            logger.info(f"➕ Mensagem de texto adicionada à queue. "
+                       f"Total na fila: {len(user_message_queues[user_id])}")
+            
+            # Cancelar timer anterior se existir
+            if user_id in user_timers and not user_timers[user_id].done():
+                user_timers[user_id].cancel()
+                logger.info("⏹️ Timer anterior cancelado - nova mensagem recebida")
+            
+            # Criar novo timer para processamento em lote
+            user_timers[user_id] = asyncio.create_task(
+                process_user_messages_batch(user_id, whatsapp_number)
+            )
+            
+            logger.info(f"⏱️ Timer de debounce iniciado ({DEBOUNCE_DELAY}s)")
+            
+            return {
+                "message": "Mensagem de texto adicionada à queue",
+                "queue_size": len(user_message_queues[user_id]),
+                "debounce_delay": DEBOUNCE_DELAY,
+                "processing_mode": "batch"
+            }
         
-        # Processar baseado no tipo de mensagem
-        try:
-            if message_type == 'image' and has_image:
-                logger.info("🖼️ Processando mensagem de imagem")
-                response = vanessa.run(
-                    images=[evolution_data['image_base64']], 
-                    session_id=session_id
-                )
-            elif message_type == 'audio' and has_audio:
-                logger.info("📻 Processando mensagem de áudio")
-                response = vanessa.run(
-                    audio=evolution_data['audio_base64'], 
-                    session_id=session_id
-                )
-            else:
-                logger.info("📝 Processando mensagem de texto")
-                # Incluir instruções dinâmicas na mensagem
-                message_with_context = (
-                    f"{dynamic_instructions}\n\n"
-                    f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
-                )
-                response = vanessa.run(
-                    message_with_context, 
-                    session_id=session_id
-                )
-            
-            logger.info(f"🔍 Resposta do agente - Tipo: {type(response)}")
-            if hasattr(response, 'content'):
-                logger.info(f"🔍 Content: {response.content}")
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                logger.info(f"🔧 Tool calls detectados: {len(response.tool_calls)}")
-                for i, tool_call in enumerate(response.tool_calls):
-                    logger.info(f"🔧 Tool call {i+1}: {tool_call}")
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao executar agente: {e}")
-            logger.error(f"❌ Tipo do erro: {type(e)}")
-            import traceback
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
-            response = None
-
-        # Extrair apenas o conteúdo da mensagem com verificação de None
-        if response is None:
-            message = "Erro: Resposta vazia do agente"
-        elif hasattr(response, 'content') and response.content:
-            message = response.content
-        elif hasattr(response, 'content') and response.content is None:
-            # Agente pode ter usado ferramentas sem retornar texto
-            message = "Perfeito! Vou te enviar os materiais de comprovação."
+        # 🎯 PROCESSAMENTO IMEDIATO para imagens e áudio (não aplicar debounce)
         else:
-            # Fallback para outros casos
-            message = "Aguarde um momento, estou processando sua solicitação."
-        
-        # Garantir que message nunca seja None
-        if message is None:
-            message = "Erro: Não foi possível obter resposta"
+            logger.info("🎯 Processamento imediato (imagem/áudio)")
+            
+            # Usar session_id baseado no remote_jid para manter histórico
+            session_id = f"elo-{remote_jid}"
+            
+            # Criar instruções dinâmicas com o número específico do cliente
+            dynamic_instructions = f"""
+CONTEXTO ATUAL:
+- Cliente: {push_name}
+- Número WhatsApp: {whatsapp_number}
 
-        logger.info(f"✅ Vanessa respondeu com sucesso "
-                    f"(tamanho: {len(message)} caracteres)")
+📢 IMPORTANTE: A pergunta sobre cardápio online JÁ FOI ENVIADA!
+Continue a conversa a partir da resposta do cliente.
+NÃO repita: "Oi, é do restaurante?" - vá direto ao acompanhamento!
 
-        return {
-            "message": "Resposta enviada via WhatsApp",
-        }
+🆘 NÚMERO DE EMERGÊNCIA: 5548996438314
+Se houver problemas técnicos ou não conseguir agendar, redirecione!
+
+INSTRUÇÕES DE FERRAMENTAS:
+🖼️ ENVIO DE IMAGENS AUTOMÁTICO:
+Quando mencionar resultados, SEMPRE envie imagem correspondente:
+
+Para resultados financiais (R$ 877.000):
+send_media_message(number='{whatsapp_number}', media_type='image',
+media='knowledge/relatorio.jpg', caption='Aqui estão os resultados 
+reais dos nossos clientes!')
+
+Para crescimento (300%):
+send_media_message(number='{whatsapp_number}', media_type='image', 
+media='knowledge/visualizacao.jpg', caption='Visualização do 
+crescimento dos nossos clientes!')
+
+Para cases de sucesso:
+send_media_message(number='{whatsapp_number}', media_type='image',
+media='knowledge/cases.jpg', caption='Veja alguns dos nossos cases 
+de sucesso!')
+
+🎯 REGRA: SEMPRE combine send_text_message + send_media_message para 
+maior impacto!
+
+SEMPRE use as ferramentas quando mencionar resultados!
+"""
+            
+            # Processar baseado no tipo de mensagem
+            try:
+                if message_type == 'image' and has_image:
+                    logger.info("🖼️ Processando mensagem de imagem")
+                    response = vanessa.run(
+                        images=[evolution_data['image_base64']], 
+                        session_id=session_id
+                    )
+                elif message_type == 'audio' and has_audio:
+                    logger.info("📻 Processando mensagem de áudio")
+                    response = vanessa.run(
+                        audio=evolution_data['audio_base64'], 
+                        session_id=session_id
+                    )
+                else:
+                    logger.info("📝 Processando mensagem de texto (fallback)")
+                    message_with_context = (
+                        f"{dynamic_instructions}\n\n"
+                        f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
+                    )
+                    response = vanessa.run(
+                        message_with_context, 
+                        session_id=session_id
+                    )
+                
+                logger.info(f"🔍 Resposta do agente - Tipo: {type(response)}")
+                if hasattr(response, 'content'):
+                    logger.info(f"🔍 Content: {response.content}")
+                if hasattr(response, 'tool_calls') and response.tool_calls:
+                    logger.info(f"🔧 Tool calls detectados: "
+                               f"{len(response.tool_calls)}")
+                    for i, tool_call in enumerate(response.tool_calls):
+                        logger.info(f"🔧 Tool call {i+1}: {tool_call}")
+                
+            except Exception as e:
+                logger.error(f"❌ Erro ao executar agente: {e}")
+                logger.error(f"❌ Tipo do erro: {type(e)}")
+                import traceback
+                logger.error(f"❌ Traceback: {traceback.format_exc()}")
+                response = None
+
+            # Extrair apenas o conteúdo da mensagem com verificação de None
+            if response is None:
+                message = "Erro: Resposta vazia do agente"
+            elif hasattr(response, 'content') and response.content:
+                message = response.content
+            elif hasattr(response, 'content') and response.content is None:
+                # Agente pode ter usado ferramentas sem retornar texto
+                message = "Perfeito! Vou te enviar os materiais de comprovação."
+            else:
+                # Fallback para outros casos
+                message = "Aguarde um momento, estou processando sua solicitação."
+            
+            # Garantir que message nunca seja None
+            if message is None:
+                message = "Erro: Não foi possível obter resposta"
+
+            logger.info(f"✅ Vanessa respondeu com sucesso "
+                        f"(tamanho: {len(message)} caracteres)")
+
+            return {
+                "message": "Resposta enviada via WhatsApp (processamento imediato)",
+                "processing_mode": "immediate"
+            }
 
     except Exception as e:
         logger.error(f"❌ Erro na conversa com Vanessa: {str(e)}")
