@@ -2,11 +2,9 @@ import os
 import logging
 import json
 import tempfile
-import threading
 import sqlite3
 import csv
-from datetime import datetime, timedelta
-from typing import Dict, List
+from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, UploadFile, File
 from agno.agent import Agent
@@ -54,22 +52,10 @@ def init_restaurant_db():
     conn.close()
     logger.info("✅ Banco de dados de restaurantes inicializado")
 
+
 # Inicializar DB na importação
 init_restaurant_db()
 
-
-# Sistema de Follow-up Automático
-class FollowUpManager:
-    """Gerencia follow-ups automáticos após período de inatividade"""
-    
-    def __init__(self):
-        self.pending_followups: Dict[str, threading.Timer] = {}
-        self.last_interaction: Dict[str, datetime] = {}
-        self.followup_delay = 20 * 60  # 20 minutos em segundos
-        self.scheduled_clients = set()  # Clientes que agendaram reunião
-
-# Instância global do gerenciador de follow-up
-followup_manager = FollowUpManager()
 
 # Usar variável de ambiente para Google API Key
 google_api_key = os.getenv("GOOGLE_API_KEY", 
@@ -235,7 +221,7 @@ vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
     model=OpenAIChat(
-        id="gpt-4o-mini",
+        id="gpt-4-mini",
         temperature=0.7,
         max_tokens=1000,
         top_p=0.9,
@@ -251,7 +237,8 @@ vanessa = Agent(
         "Você é Vanessa, vendedora da Elo Marketing.",
         "",
         "🚨 REGRA CRÍTICA - DATA ATUAL:",
-        "SEMPRE use shell_tools para consultar a data de hoje ANTES de agendar!",
+        "SEMPRE use shell_tools para consultar a data de hoje ANTES de "
+        "agendar!",
         "Comando: ['date', '+%A, %d de %B de %Y']",
         "NUNCA invente datas - SEMPRE consulte o sistema!",
         "",
@@ -277,7 +264,8 @@ vanessa = Agent(
         "🚨 INSTRUÇÕES CRÍTICAS DE AGENDAMENTO - FLUXO OBRIGATÓRIO:",
         "",
         "⚡ GATILHOS PARA USAR FERRAMENTAS (palavras-chave):",
-        "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', 'topa', 'sim, quero'",
+        "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', "
+        "'topa', 'sim, quero'",
         "→ IMEDIATAMENTE execute este fluxo OBRIGATÓRIO:",
         "",
         "🔥 PASSO 1 - CONSULTAR CALENDÁRIO (OBRIGATÓRIO):",
@@ -293,19 +281,22 @@ vanessa = Agent(
         "",
         "🔥 PASSO 2 - SUGERIR HORÁRIOS BASEADOS NA AGENDA REAL:",
         "Após executar list_events(), responda EXATAMENTE assim:",
-        "'Consultei a agenda do Eduardo. Ele tem disponibilidade terça às 14h ou quarta às 10h'",
+        "'Consultei a agenda do Eduardo. Ele tem disponibilidade terça às "
+        "14h ou quarta às 10h'",
         "OU: 'Eduardo está livre quinta de manhã às 9h ou sexta às 15h'", 
         "OU: 'A agenda mostra vagas segunda às 11h ou terça às 16h'",
         "SEMPRE ofereça 2 horários específicos diferentes!",
         "",
         "🔥 PASSO 3 - COLETAR DADOS QUANDO CLIENTE ESCOLHER:",
         "Cliente escolhe horário → Responda:",
-        "'Para finalizar, preciso: nome completo, nome do restaurante e email'",
+        "'Para finalizar, preciso: nome completo, nome do restaurante e "
+        "email'",
         "COLETE TODOS os dados antes de criar o evento!",
         "",
         "🔥 PASSO 4 - CRIAR EVENTO NO CALENDÁRIO (OBRIGATÓRIO):",
         "Quando tiver todos os dados, SEMPRE EXECUTE:",
-        "create_event(timezone='America/Sao_Paulo', add_google_meet_link=True)",
+        "create_event(timezone='America/Sao_Paulo', "
+        "add_google_meet_link=True)",
         "NUNCA confirme agendamento sem executar create_event()!",
         "",
         "🔥 PASSO 5 - CONFIRMAR COM LINK DO MEET:",
@@ -323,14 +314,18 @@ vanessa = Agent(
         "",
         "✅ EXEMPLO COMPLETO OBRIGATÓRIO:",
         "Cliente: 'Aceito agendar'",
-        "Você: EXECUTA shell_tools(['date', '+%A, %d de %B de %Y']) para saber que dia é hoje",
+        "Você: EXECUTA shell_tools(['date', '+%A, %d de %B de %Y']) para "
+        "saber que dia é hoje",
         "Você: EXECUTA list_events() para ver agenda disponível",
-        "Você: 'Consultei a agenda do Eduardo. Ele tem disponibilidade terça às 14h ou quinta às 16h'",
+        "Você: 'Consultei a agenda do Eduardo. Ele tem disponibilidade "
+        "terça às 14h ou quinta às 16h'",
         "Cliente: 'Terça às 14h'", 
-        "Você: 'Para finalizar, preciso: nome completo, nome do restaurante e email'",
+        "Você: 'Para finalizar, preciso: nome completo, nome do "
+        "restaurante e email'",
         "Cliente: 'João Silva, Restaurante Sabor, joao@email.com'",
         "Você: EXECUTA create_event() com data FUTURA correta",
-        "Você: 'Reunião agendada para terça às 14h! Link do Google Meet: [url]'",
+        "Você: 'Reunião agendada para terça às 14h! Link do Google Meet: "
+        "[url]'",
         "",
         "🚨 TIMEZONE OBRIGATÓRIO:",
         "SEMPRE use timezone='America/Sao_Paulo' em create_event()",
@@ -400,25 +395,31 @@ vanessa = Agent(
         "",
         "📱 FERRAMENTAS DE WHATSAPP DISPONÍVEIS:",
         "- Use send_text_message para enviar mensagens de texto via WhatsApp",
-        "- Use send_media_message para enviar imagens quando mencionar resultados",
-        "- Use check_whatsapp_number para verificar se um número está no WhatsApp",
+        "- Use send_media_message para enviar imagens quando mencionar "
+        "resultados",
+        "- Use check_whatsapp_number para verificar se um número está no "
+        "WhatsApp",
         "- Formato de número: 5548999999999 (código país + DDD + número)",
         "",
         "🔥 REGRA FINAL OBRIGATÓRIA:",
         "Para CADA resposta que você gerar, EXECUTE send_text_message!",
         "Nunca apenas retorne texto - SEMPRE envie via send_text_message!",
-        "Formato: send_text_message(number='554896438314', text='sua_resposta_aqui')",
+        "Formato: send_text_message(number='554896438314', "
+        "text='sua_resposta_aqui')",
         "",
         "🚨 AGENDAMENTO - REGRA ABSOLUTA:",
         "Quando cliente pedir reunião, RESPONDA EXATAMENTE assim:",
         "'Ótimo! Posso agendar segunda às 14h ou terça às 10h. Qual prefere?'",
         "NUNCA diga que 'agendou' sem o cliente escolher horário primeiro!",
-        "NUNCA mencione 'Eduardo entrará em contato' - sugira horários específicos!",
+        "NUNCA mencione 'Eduardo entrará em contato' - sugira horários "
+        "específicos!",
         "",
         "📝 SCRIPT LITERAL - SIGA EXATAMENTE:",
         "Se mensagem contém: 'reunião' ou 'marcar' ou 'agendar'",
-        "RESPONDA SEMPRE: 'Perfeito! Que tal amanhã às 14h ou quinta às 16h? Qual horário fica melhor?'",
-        "NÃO peça dados pessoais. NÃO diga que precisa confirmar. SUGIRA HORÁRIOS!"
+        "RESPONDA SEMPRE: 'Perfeito! Que tal amanhã às 14h ou quinta às "
+        "16h? Qual horário fica melhor?'",
+        "NÃO peça dados pessoais. NÃO diga que precisa confirmar. SUGIRA "
+        "HORÁRIOS!"
     ],
     markdown=True,
     show_tool_calls=True,
@@ -445,20 +446,25 @@ def extract_evolution_data(data):
                 logger.info("📦 Novo formato Evolution API 2025 detectado")
                 
                 # Extrair mensagem do novo formato
-                if 'message' in payload_data and isinstance(payload_data['message'], dict):
+                if ('message' in payload_data and 
+                        isinstance(payload_data['message'], dict)):
                     if 'conversation' in payload_data['message']:
                         message = payload_data['message']['conversation']
                         message_type = 'text'
-                    elif 'imageMessage' in payload_data['message'] and 'base64' in payload_data['message']:
+                    elif ('imageMessage' in payload_data['message'] and 
+                          'base64' in payload_data['message']):
                         image_base64 = payload_data['message']['base64']
                         message_type = 'image'
-                    elif 'audioMessage' in payload_data['message'] and 'base64' in payload_data['message']:
+                    elif ('audioMessage' in payload_data['message'] and 
+                          'base64' in payload_data['message']):
                         audio_base64 = payload_data['message']['base64']
                         message_type = 'audio'
                 
                 # Extrair informações do remetente do novo formato
-                if 'key' in payload_data and isinstance(payload_data['key'], dict):
-                    remote_jid = payload_data['key'].get('remoteJid', 'unknown')
+                if ('key' in payload_data and 
+                        isinstance(payload_data['key'], dict)):
+                    remote_jid = payload_data['key'].get('remoteJid', 
+                                                         'unknown')
                 
                 if 'pushName' in payload_data:
                     push_name = payload_data['pushName']
@@ -669,7 +675,8 @@ Se houver problemas técnicos ou não conseguir agendar, redirecione!
 Se o cliente mencionar "reunião", "marcar", "agendar" ou similares,
 CONSULTE sua base de conhecimento 'calendário_agendamento.txt'
 SIGA EXATAMENTE o fluxo descrito no documento:
-1. PRIMEIRO: Execute shell_tools com ['date', '+%A, %d de %B de %Y'] para saber que dia é HOJE
+1. PRIMEIRO: Execute shell_tools com ['date', '+%A, %d de %B de %Y'] para 
+saber que dia é HOJE
 2. SEGUNDO: Use list_events() para consultar agenda
 3. TERCEIRO: Sugira horários específicos FUTUROS baseados na disponibilidade REAL
 4. QUARTO: Quando cliente escolher, use create_event() com DATA CORRETA
@@ -750,36 +757,6 @@ SEMPRE use as ferramentas quando mencionar resultados!
 
         logger.info(f"✅ Vanessa respondeu com sucesso "
                     f"(tamanho: {len(message)} caracteres)")
-
-        # SISTEMA DE FOLLOW-UP AUTOMÁTICO
-        # Verificar se agendamento foi feito
-        if followup_manager.check_if_appointment_made(message, remote_jid):
-            # Parar follow-up permanentemente se agendamento foi feito
-            followup_manager.stop_followup_permanently(remote_jid)
-            
-            # Enviar mensagem de confirmação do agendamento
-            if evolution_tools:
-                try:
-                    number = remote_jid.replace("@s.whatsapp.net", "")
-                    confirmation_msg = ("✅ Perfeito! Sua reunião foi agendada. "
-                                       "Eduardo entrará em contato no horário marcado. "
-                                       "Obrigada por escolher a Elo Marketing!")
-                    
-                    evolution_tools.send_text_message(
-                        number=number,
-                        text=confirmation_msg
-                    )
-                    logger.info(f"📅 Confirmação de agendamento enviada para {number}")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao enviar confirmação: {e}")
-        else:
-            # Cancelar follow-up anterior (usuário respondeu)
-            followup_manager.cancel_followup(remote_jid)
-            
-            # Agendar novo follow-up se evolution_tools estiver disponível
-            if evolution_tools:
-                followup_manager.schedule_followup(remote_jid, evolution_tools)
-                logger.info(f"⏰ Follow-up automático agendado para {remote_jid}")
 
         return {
             "message": "Resposta enviada via WhatsApp",
