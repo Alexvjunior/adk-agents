@@ -3,12 +3,14 @@ import logging
 import json
 import tempfile
 import threading
-from datetime import datetime
-from typing import Dict
+import sqlite3
+import csv
+from datetime import datetime, timedelta
+from typing import Dict, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from agno.agent import Agent
-from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
 from agno.storage.agent.sqlite import SqliteAgentStorage
 from agno.knowledge.text import TextKnowledgeBase
 from agno.tools.knowledge import KnowledgeTools
@@ -31,7 +33,32 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 
-# Sistema de Follow-up Automático
+# Inicializar banco de dados para restaurantes
+def init_restaurant_db():
+    """Inicializa o banco de dados de restaurantes"""
+    conn = sqlite3.connect("restaurantes.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS restaurantes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            numero TEXT NOT NULL UNIQUE,
+            primeira_mensagem_enviada BOOLEAN DEFAULT FALSE,
+            data_envio DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    conn.commit()
+    conn.close()
+    logger.info("✅ Banco de dados de restaurantes inicializado")
+
+# Inicializar DB na importação
+init_restaurant_db()
+
+
+# Sistema de Follow-up Automático  
 class FollowUpManager:
     """Gerencia follow-ups automáticos após período de inatividade"""
     
@@ -40,127 +67,6 @@ class FollowUpManager:
         self.last_interaction: Dict[str, datetime] = {}
         self.followup_delay = 20 * 60  # 20 minutos em segundos
         self.scheduled_clients = set()  # Clientes que agendaram reunião
-        
-    def schedule_followup(self, remote_jid: str, 
-                         evolution_tools: EvolutionApiTools):
-        """Agenda um follow-up para ser enviado após 20 minutos"""
-        # Não agendar follow-up se cliente já agendou reunião
-        if remote_jid in self.scheduled_clients:
-            logger.info(f"🚫 Follow-up não agendado para {remote_jid} - "
-                       f"cliente já agendou reunião")
-            return
-        
-        # Cancelar follow-up anterior se existir
-        self.cancel_followup(remote_jid)
-        
-        # Registrar última interação
-        self.last_interaction[remote_jid] = datetime.now()
-        
-        # Criar timer para follow-up
-        timer = threading.Timer(
-            self.followup_delay,
-            self._send_followup,
-            args=[remote_jid, evolution_tools]
-        )
-        
-        self.pending_followups[remote_jid] = timer
-        timer.start()
-        
-        logger.info(f"⏰ Follow-up agendado para {remote_jid} em 20 minutos")
-    
-    def cancel_followup(self, remote_jid: str):
-        """Cancela follow-up pendente (quando usuário responde)"""
-        if remote_jid in self.pending_followups:
-            self.pending_followups[remote_jid].cancel()
-            del self.pending_followups[remote_jid]
-            logger.info(f"❌ Follow-up cancelado para {remote_jid}")
-    
-    def stop_followup_permanently(self, remote_jid: str, reason: str = "agendou reunião"):
-        """Para follow-up permanentemente (quando cliente agenda reunião)"""
-        # Cancelar follow-up pendente
-        self.cancel_followup(remote_jid)
-        
-        # Adicionar à lista de clientes que agendaram
-        self.scheduled_clients.add(remote_jid)
-        
-        logger.info(f"🛑 Follow-up PERMANENTEMENTE DESATIVADO para {remote_jid} - {reason}")
-    
-    def reactivate_followup(self, remote_jid: str):
-        """Reativa follow-up (caso necessário)"""
-        if remote_jid in self.scheduled_clients:
-            self.scheduled_clients.remove(remote_jid)
-            logger.info(f"🔄 Follow-up reativado para {remote_jid}")
-    
-    def check_if_appointment_made(self, message_content: str, remote_jid: str):
-        """Verifica se mensagem indica agendamento feito com sucesso"""
-        # Palavras-chave que indicam agendamento bem-sucedido
-        appointment_keywords = [
-            "agendado com sucesso",
-            "reunião marcada",
-            "encontro agendado", 
-            "conversa agendada",
-            "evento criado",
-            "agendamento confirmado",
-            "reunião confirmada",
-            "evento adicionado ao calendário",
-            "nossa reunião está marcada"
-        ]
-        
-        message_lower = message_content.lower()
-        for keyword in appointment_keywords:
-            if keyword in message_lower:
-                logger.info(f"📅 AGENDAMENTO DETECTADO para {remote_jid}: '{keyword}'")
-                return True
-        
-        return False
-    
-    def _send_followup(self, remote_jid: str, 
-                      evolution_tools: EvolutionApiTools):
-        """Envia mensagem de follow-up automática"""
-        # Verificar se cliente não agendou reunião antes de enviar
-        if remote_jid in self.scheduled_clients:
-            logger.info(f"🚫 Follow-up cancelado - {remote_jid} já agendou reunião")
-            return
-        
-        try:
-            # Extrair número do JID (remover @s.whatsapp.net)
-            number = remote_jid.replace("@s.whatsapp.net", "")
-            
-            # Mensagens de follow-up variadas
-            followup_messages = [
-                ("Olá! Vi que você estava interessado nos nossos resultados. "
-                 "Tem alguma dúvida sobre como conseguimos R$ 877.000 para "
-                 "nossos clientes?"),
-                ("Oi! Ainda está por aí? Nossos restaurantes parceiros "
-                 "aumentaram vendas em 300%. Quer saber como aplicamos "
-                 "isso no seu negócio?"),
-                ("Ei! Não queria deixar passar a oportunidade. Nosso Eduardo "
-                 "pode mostrar exatamente como conseguimos esses resultados "
-                 "incríveis para restaurantes."),
-                ("Olá! Talvez tenha perdido minha mensagem anterior. Temos "
-                 "cases reais de restaurantes que saíram de pouco movimento "
-                 "para faturar mais de R$ 877 mil!")
-            ]
-            
-            # Escolher mensagem baseada no horário (para variar)
-            import random
-            message = random.choice(followup_messages)
-            
-            # Enviar follow-up
-            result = evolution_tools.send_text_message(
-                number=number,
-                text=message
-            )
-            
-            logger.info(f"📤 Follow-up enviado para {number}: {result}")
-            
-            # Limpar da lista de pendentes
-            if remote_jid in self.pending_followups:
-                del self.pending_followups[remote_jid]
-                
-        except Exception as e:
-            logger.error(f"❌ Erro ao enviar follow-up para {remote_jid}: {e}")
-
 
 # Instância global do gerenciador de follow-up
 followup_manager = FollowUpManager()
@@ -169,6 +75,14 @@ followup_manager = FollowUpManager()
 google_api_key = os.getenv("GOOGLE_API_KEY", 
                            "AIzaSyCKTbPQDtAhUI9VWQH26_v2KJW3146Xe20")
 os.environ["GOOGLE_API_KEY"] = google_api_key
+
+# Configurar OpenAI API Key
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    logger.error("❌ OPENAI_API_KEY não configurada!")
+else:
+    os.environ["OPENAI_API_KEY"] = openai_api_key
+    logger.info("✅ OpenAI API Key configurada")
 
 storage = SqliteAgentStorage(table_name="sessions", db_file="sessions.db")
 
@@ -320,7 +234,14 @@ else:
 vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
-    model=Gemini(id="gemini-2.5-pro"),
+    model=OpenAIChat(
+        model="o4-mini",
+        temperature=0.7,
+        max_tokens=1000,
+        top_p=0.9,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
+    ),
     storage=storage,
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
@@ -915,6 +836,164 @@ async def test_evolution():
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/enviar-lista-restaurantes")
+async def enviar_lista_restaurantes(file: UploadFile = File(...)):
+    """
+    Endpoint para processar lista de restaurantes e enviar primeira mensagem
+    Formato esperado do CSV: nome,numero
+    """
+    try:
+        # Verificar se o arquivo é CSV
+        if not file.filename.endswith('.csv'):
+            return {"error": "Arquivo deve ser CSV"}
+        
+        # Ler conteúdo do arquivo
+        content = await file.read()
+        content_str = content.decode('utf-8')
+        
+        # Processar CSV
+        csv_reader = csv.reader(content_str.splitlines())
+        restaurantes_processados = []
+        restaurantes_erro = []
+        
+        # Mensagem primeira interação
+        primeira_mensagem = (
+            "Oi! Aqui é a Vanessa da Elo Marketing. "
+            "É de um restaurante? Vocês têm cardápio ou menu online?"
+        )
+        
+        for i, row in enumerate(csv_reader):
+            # Pular header se existir
+            if i == 0 and ('nome' in row[0].lower() or 'name' in row[0].lower()):
+                continue
+                
+            if len(row) < 2:
+                restaurantes_erro.append({
+                    "linha": i + 1,
+                    "erro": "Formato inválido - necessário nome,numero"
+                })
+                continue
+            
+            nome = row[0].strip()
+            numero = row[1].strip()
+            
+            # Limpar número (remover caracteres especiais)
+            numero_limpo = ''.join(filter(str.isdigit, numero))
+            
+            if len(numero_limpo) < 10:
+                restaurantes_erro.append({
+                    "linha": i + 1,
+                    "nome": nome,
+                    "numero": numero,
+                    "erro": "Número muito curto"
+                })
+                continue
+            
+            try:
+                # Salvar no banco de dados
+                conn = sqlite3.connect("restaurantes.db")
+                cursor = conn.cursor()
+                
+                # Verificar se já existe
+                cursor.execute(
+                    "SELECT id, primeira_mensagem_enviada FROM restaurantes WHERE numero = ?",
+                    (numero_limpo,)
+                )
+                existing = cursor.fetchone()
+                
+                if existing:
+                    if existing[1]:  # Já enviou mensagem
+                        restaurantes_erro.append({
+                            "linha": i + 1,
+                            "nome": nome,
+                            "numero": numero_limpo,
+                            "erro": "Mensagem já enviada anteriormente"
+                        })
+                        conn.close()
+                        continue
+                else:
+                    # Inserir novo restaurante
+                    cursor.execute(
+                        """INSERT INTO restaurantes (nome, numero) 
+                           VALUES (?, ?)""",
+                        (nome, numero_limpo)
+                    )
+                
+                # Para teste, enviar apenas para o número especificado
+                numero_envio = "5548996438314"  # Número de teste
+                
+                if evolution_tools:
+                    try:
+                        # Enviar mensagem
+                        result = evolution_tools.send_text_message(
+                            number=numero_envio,
+                            text=f"TESTE - {nome}: {primeira_mensagem}"
+                        )
+                        
+                        # Marcar como enviado no banco
+                        cursor.execute(
+                            """UPDATE restaurantes 
+                               SET primeira_mensagem_enviada = TRUE, data_envio = ?
+                               WHERE numero = ?""",
+                            (datetime.now(), numero_limpo)
+                        )
+                        
+                        restaurantes_processados.append({
+                            "nome": nome,
+                            "numero": numero_limpo,
+                            "numero_teste": numero_envio,
+                            "status": "enviado",
+                            "result": str(result)
+                        })
+                        
+                    except Exception as e:
+                        restaurantes_erro.append({
+                            "linha": i + 1,
+                            "nome": nome,
+                            "numero": numero_limpo,
+                            "erro": f"Erro ao enviar: {str(e)}"
+                        })
+                else:
+                    restaurantes_erro.append({
+                        "linha": i + 1,
+                        "nome": nome,
+                        "numero": numero_limpo,
+                        "erro": "Evolution API não configurada"
+                    })
+                
+                conn.commit()
+                conn.close()
+                
+            except sqlite3.IntegrityError:
+                restaurantes_erro.append({
+                    "linha": i + 1,
+                    "nome": nome,
+                    "numero": numero_limpo,
+                    "erro": "Número já existe no banco"
+                })
+            except Exception as e:
+                restaurantes_erro.append({
+                    "linha": i + 1,
+                    "nome": nome,
+                    "numero": numero,
+                    "erro": str(e)
+                })
+        
+        return {
+            "status": "processado",
+            "total_linhas": i + 1,
+            "processados": len(restaurantes_processados),
+            "erros": len(restaurantes_erro),
+            "restaurantes_processados": restaurantes_processados,
+            "restaurantes_erro": restaurantes_erro,
+            "observacao": "MODO TESTE: Todas as mensagens foram enviadas para 5548996438314"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar lista de restaurantes: {e}")
+        return {"error": f"Erro interno: {str(e)}"}
 
 
 if __name__ == "__main__":
