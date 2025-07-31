@@ -58,7 +58,7 @@ def init_restaurant_db():
 init_restaurant_db()
 
 
-# Sistema de Follow-up Automático  
+# Sistema de Follow-up Automático
 class FollowUpManager:
     """Gerencia follow-ups automáticos após período de inatividade"""
     
@@ -235,7 +235,7 @@ vanessa = Agent(
     name="Vanessa",
     role="Vendedora da Elo Marketing especializada em restaurantes",
     model=OpenAIChat(
-        model="o4-mini",
+        id="gpt-4o-mini",
         temperature=0.7,
         max_tokens=1000,
         top_p=0.9,
@@ -994,6 +994,43 @@ async def enviar_lista_restaurantes(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"❌ Erro ao processar lista de restaurantes: {e}")
         return {"error": f"Erro interno: {str(e)}"}
+
+
+@app.get("/restaurantes")
+async def listar_restaurantes():
+    """Lista todos os restaurantes cadastrados"""
+    try:
+        conn = sqlite3.connect("restaurantes.db")
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, nome, numero, primeira_mensagem_enviada, 
+                   data_envio, created_at
+            FROM restaurantes 
+            ORDER BY created_at DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        restaurantes = []
+        for row in rows:
+            restaurantes.append({
+                "id": row[0],
+                "nome": row[1],
+                "numero": row[2],
+                "primeira_mensagem_enviada": bool(row[3]),
+                "data_envio": row[4],
+                "created_at": row[5]
+            })
+        
+        return {
+            "total": len(restaurantes),
+            "restaurantes": restaurantes
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
