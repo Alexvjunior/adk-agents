@@ -454,7 +454,7 @@ vanessa = Agent(
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
     add_history_to_messages=True,
-    tool_choice="required",  # Voltando para "required" para garantir uso do send_text_message
+    tool_choice="auto",  # Voltando para "required" para garantir uso do send_text_message
     instructions=[
         "🚨 REGRA CRÍTICA #1 - ENVIO OBRIGATÓRIO:",
         "TODA resposta que você gerar DEVE ser enviada via send_text_message do EvolutionApiTools!",
