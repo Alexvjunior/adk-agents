@@ -90,19 +90,110 @@ agent_knowledge = AgentKnowledge(
     num_documents=10,  # Aumentado para mais contexto
 )
 
-# Processar documentos do diretório knowledge/
-reader = TextReader(chunk=True)
-knowledge_dir = Path("knowledge/")
-if knowledge_dir.exists():
+
+def load_knowledge_base_safely():
+    """
+    Carrega documentos do knowledge base de forma segura,
+    evitando rate limiting da API da OpenAI
+    """
+    import time
+    
+    reader = TextReader(chunk=True)
+    knowledge_dir = Path("knowledge/")
+    
+    if not knowledge_dir.exists():
+        logger.warning("⚠️ Diretório 'knowledge/' não encontrado")
+        return
+    
+    # Listar todos os arquivos para processar
+    files_to_process = []
     for file_path in knowledge_dir.iterdir():
         if file_path.is_file() and file_path.suffix in ['.txt', '.md']:
-            print(f"📄 Processando arquivo: {file_path}")
+            files_to_process.append(file_path)
+    
+    if not files_to_process:
+        logger.info("📂 Nenhum arquivo encontrado na pasta knowledge/")
+        return
+    
+    logger.info(f"📚 Encontrados {len(files_to_process)} arquivos para processar")
+    
+    # Processar arquivos com rate limiting
+    processed_count = 0
+    for i, file_path in enumerate(files_to_process):
+        try:
+            logger.info(f"📄 Processando arquivo {i+1}/{len(files_to_process)}: "
+                        f"{file_path.name}")
+            
+            # Verificar se já existe no banco vetorial
+            try:
+                # Tentar buscar algo do arquivo para ver se já existe
+                existing_docs = agent_knowledge.search(
+                    query=f"arquivo {file_path.stem}",
+                    num_documents=1
+                )
+                if existing_docs and len(existing_docs) > 0:
+                    logger.info(f"✅ Arquivo {file_path.name} já foi processado "
+                                f"anteriormente")
+                    continue
+            except Exception:
+                # Se der erro na busca, significa que pode não existir ainda
+                pass
+            
+            # Ler e processar o arquivo
             documents = reader.read(file_path)
-            for doc in documents:
-                print(f"✅ Documento adicionado: {doc.name}")
-                agent_knowledge.add_document_to_knowledge_base(document=doc)
-else:
-    logger.warning("⚠️ Diretório 'knowledge/' não encontrado")
+            
+            # Processar documentos em lotes pequenos para evitar rate limiting
+            batch_size = 2  # Processar 2 documentos por vez
+            for batch_start in range(0, len(documents), batch_size):
+                batch_end = min(batch_start + batch_size, len(documents))
+                batch_docs = documents[batch_start:batch_end]
+                
+                for doc in batch_docs:
+                    try:
+                        # Adicionar identificador do arquivo no metadado
+                        doc.meta["source_file"] = file_path.name
+                        agent_knowledge.add_document_to_knowledge_base(
+                            document=doc
+                        )
+                        processed_count += 1
+                        
+                        # Rate limiting: pausa entre documentos
+                        time.sleep(0.5)  # 500ms entre documentos
+                        
+                    except Exception as doc_error:
+                        logger.error(f"❌ Erro ao processar documento do arquivo "
+                                     f"{file_path.name}: {doc_error}")
+                        continue
+                
+                # Pausa maior entre lotes
+                if batch_end < len(documents):
+                    logger.info(f"⏸️ Pausa entre lotes... "
+                                f"({batch_end}/{len(documents)} documentos "
+                                f"processados)")
+                    time.sleep(2.0)  # 2 segundos entre lotes
+            
+            logger.info(f"✅ Arquivo {file_path.name} processado com sucesso")
+            
+            # Pausa entre arquivos
+            if i < len(files_to_process) - 1:
+                logger.info("⏸️ Pausa entre arquivos...")
+                time.sleep(3.0)  # 3 segundos entre arquivos
+                
+        except Exception as file_error:
+            logger.error(f"❌ Erro ao processar arquivo {file_path.name}: {file_error}")
+            continue
+    
+    logger.info(f"🎉 Knowledge base carregado! Total de documentos processados: {processed_count}")
+
+
+# Carregar knowledge base de forma assíncrona (não bloquear a inicialização)
+try:
+    logger.info("🚀 Iniciando carregamento do knowledge base...")
+    load_knowledge_base_safely()
+except Exception as e:
+    logger.error(f"⚠️ Erro no carregamento do knowledge base: {e}")
+    logger.info("📝 Sistema continuará funcionando sem o knowledge base completo")
+
 
 # 🔧 FERRAMENTAS DE CONHECIMENTO - Usando o mesmo sistema
 knowledge_tools = KnowledgeTools(
