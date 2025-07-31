@@ -115,34 +115,36 @@ def load_knowledge_base_safely():
         logger.info("📂 Nenhum arquivo encontrado na pasta knowledge/")
         return
     
-    logger.info(f"📚 Encontrados {len(files_to_process)} arquivos para processar")
+    logger.info(f"📚 Encontrados {len(files_to_process)} arquivos "
+                f"para processar")
     
     # Processar arquivos com rate limiting
     processed_count = 0
     for i, file_path in enumerate(files_to_process):
         try:
-            logger.info(f"📄 Processando arquivo {i+1}/{len(files_to_process)}: "
-                        f"{file_path.name}")
+            logger.info(f"📄 Processando arquivo {i+1}/"
+                        f"{len(files_to_process)}: {file_path.name}")
             
             # Verificar se já existe no banco vetorial
+            # (apenas após collection existir)
             try:
-                # Tentar buscar algo do arquivo para ver se já existe
                 existing_docs = agent_knowledge.search(
                     query=f"arquivo {file_path.stem}",
                     num_documents=1
                 )
                 if existing_docs and len(existing_docs) > 0:
-                    logger.info(f"✅ Arquivo {file_path.name} já foi processado "
-                                f"anteriormente")
+                    logger.info(f"✅ Arquivo {file_path.name} já foi "
+                                f"processado anteriormente")
                     continue
             except Exception:
-                # Se der erro na busca, significa que pode não existir ainda
+                # Collection pode não existir ainda - isso é normal
+                logger.debug("Collection ainda não existe - criando...")
                 pass
             
             # Ler e processar o arquivo
             documents = reader.read(file_path)
             
-            # Processar documentos em lotes pequenos para evitar rate limiting
+            # Processar documentos em lotes pequenos
             batch_size = 2  # Processar 2 documentos por vez
             for batch_start in range(0, len(documents), batch_size):
                 batch_end = min(batch_start + batch_size, len(documents))
@@ -150,8 +152,16 @@ def load_knowledge_base_safely():
                 
                 for doc in batch_docs:
                     try:
-                        # Adicionar identificador do arquivo no metadado
+                        # Verificar se documento tem atributo meta
+                        if not hasattr(doc, 'meta') or doc.meta is None:
+                            doc.meta = {}
+                        
+                        # Adicionar metadados
                         doc.meta["source_file"] = file_path.name
+                        doc.meta["processed_at"] = time.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                        
                         agent_knowledge.add_document_to_knowledge_base(
                             document=doc
                         )
@@ -161,18 +171,17 @@ def load_knowledge_base_safely():
                         time.sleep(0.5)  # 500ms entre documentos
                         
                     except Exception as doc_error:
-                        logger.error(f"❌ Erro ao processar documento do arquivo "
-                                     f"{file_path.name}: {doc_error}")
+                        logger.error(f"❌ Erro ao processar documento: "
+                                     f"{doc_error}")
                         continue
                 
                 # Pausa maior entre lotes
                 if batch_end < len(documents):
-                    logger.info(f"⏸️ Pausa entre lotes... "
-                                f"({batch_end}/{len(documents)} documentos "
-                                f"processados)")
+                    logger.info(f"⏸️ Pausa... {batch_end}/{len(documents)} "
+                                f"processados")
                     time.sleep(2.0)  # 2 segundos entre lotes
             
-            logger.info(f"✅ Arquivo {file_path.name} processado com sucesso")
+            logger.info(f"✅ Arquivo {file_path.name} processado")
             
             # Pausa entre arquivos
             if i < len(files_to_process) - 1:
@@ -180,10 +189,12 @@ def load_knowledge_base_safely():
                 time.sleep(3.0)  # 3 segundos entre arquivos
                 
         except Exception as file_error:
-            logger.error(f"❌ Erro ao processar arquivo {file_path.name}: {file_error}")
+            logger.error(f"❌ Erro ao processar {file_path.name}: "
+                         f"{file_error}")
             continue
     
-    logger.info(f"🎉 Knowledge base carregado! Total de documentos processados: {processed_count}")
+    logger.info(f"🎉 Knowledge base carregado! "
+                f"Documentos processados: {processed_count}")
 
 
 # Carregar knowledge base de forma assíncrona (não bloquear a inicialização)
@@ -192,7 +203,8 @@ try:
     load_knowledge_base_safely()
 except Exception as e:
     logger.error(f"⚠️ Erro no carregamento do knowledge base: {e}")
-    logger.info("📝 Sistema continuará funcionando sem o knowledge base completo")
+    logger.info("📝 Sistema continuará funcionando sem o knowledge base "
+                "completo")
 
 
 # 🔧 FERRAMENTAS DE CONHECIMENTO - Usando o mesmo sistema
@@ -300,7 +312,8 @@ if evolution_tools:
     tools.append(evolution_tools)
     logger.info("Evolution API Tools adicionado ao agente")
     # Debug: Log available methods
-    logger.info(f"🔧 Métodos disponíveis nas ferramentas: {dir(evolution_tools)}")
+    logger.info(f"🔧 Métodos disponíveis nas ferramentas: "
+                f"{dir(evolution_tools)}")
     logger.info(f"🔧 Funções das ferramentas: {evolution_tools.functions}")
 else:
     logger.error("❌ Evolution API Tools não está disponível")
@@ -322,25 +335,27 @@ vanessa = Agent(
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
     add_history_to_messages=True,
-    tool_choice="auto",
+    tool_choice="required",  # Forçar uso das ferramentas
     instructions=[
-        "Você é Vanessa, vendedora da Elo Marketing.",
+        "🚨 REGRA CRÍTICA #1 - ENVIO OBRIGATÓRIO:",
+        "TODA resposta que você gerar DEVE ser enviada via send_text_message!",
+        "NUNCA retorne apenas texto - SEMPRE execute send_text_message!",
+        "Formato OBRIGATÓRIO para TODA resposta:",
+        "send_text_message(number='[número_do_cliente]', text='[sua_resposta]')",
         "",
-        "🚨 REGRA CRÍTICA - DATA ATUAL:",
-        "SEMPRE use shell_tools para consultar a data de hoje ANTES de "
-        "agendar!",
+        "🚨 REGRA CRÍTICA #2 - DATA ATUAL:",
+        "SEMPRE use shell_tools para consultar a data de hoje ANTES de agendar!",
         "Comando: ['date', '+%A, %d de %B de %Y']",
         "NUNCA invente datas - SEMPRE consulte o sistema!",
         "",
-        "🚨 REGRA #1 - AGENDAMENTO (OBRIGATÓRIO):",
+        "Você é Vanessa, vendedora da Elo Marketing especializada em restaurantes.",
+        "",
+        "🚨 REGRA #3 - AGENDAMENTO (OBRIGATÓRIO):",
         "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', 'topa'",
         "IMEDIATAMENTE execute em sequência:",
         "1. list_events() - OBRIGATÓRIO para ver agenda",
-        "2. Sugira 2 horários livres: 'Eduardo tem terça 14h e quinta 16h'",
+        "2. Sugira 2 horários livres via send_text_message",
         "3. Quando cliente escolher: create_event() - OBRIGATÓRIO",
-        "",
-        "🚨 NUNCA sugira horários sem executar list_events() primeiro!",
-        "🚨 NUNCA confirme agendamento sem executar create_event()!",
         "",
         "🆘 NÚMERO DE EMERGÊNCIA:",
         "Se houver qualquer problema na conversa ou não conseguir comunicar:",
@@ -349,36 +364,31 @@ vanessa = Agent(
         "- Problema técnico no sistema",
         "- Não consegue agendar após 3 tentativas",
         "Redirecione para: 5548996438314 (WhatsApp de suporte)",
-        "Diga: 'Para melhor atendimento, entre em contato: 5548996438314'",
+        "Via send_text_message: 'Para melhor atendimento, entre em contato: 5548996438314'",
         "",
-        "🚨 INSTRUÇÕES CRÍTICAS DE AGENDAMENTO - FLUXO OBRIGATÓRIO:",
+        "🚨 FLUXO OBRIGATÓRIO DE AGENDAMENTO:",
         "",
         "⚡ GATILHOS PARA USAR FERRAMENTAS (palavras-chave):",
-        "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', "
-        "'topa', 'sim, quero'",
+        "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', 'topa', 'sim, quero'",
         "→ IMEDIATAMENTE execute este fluxo OBRIGATÓRIO:",
         "",
-        "🔥 PASSO 1 - CONSULTAR CALENDÁRIO (OBRIGATÓRIO):",
+        "🔥 PASSO 1 - CONSULTAR DATA E CALENDÁRIO (OBRIGATÓRIO):",
         "ANTES de sugerir qualquer horário, SEMPRE EXECUTE:",
-        "list_events() ← Esta ferramenta é OBRIGATÓRIA!",
+        "1. shell_tools com comando: ['date', '+%A, %d de %B de %Y']",
+        "2. list_events() ← Esta ferramenta é OBRIGATÓRIA!",
         "NUNCA sugira horários sem consultar a agenda primeiro!",
         "",
-        "📅 PASSO 1.5 - CONSULTAR DATA ATUAL (OBRIGATÓRIO):",
-        "ANTES de sugerir datas, SEMPRE EXECUTE:",
-        "shell_tools com comando: ['date', '+%A, %d de %B de %Y']",
-        "NUNCA invente datas - SEMPRE consulte o sistema!",
-        "Certifique-se que datas sugeridas são FUTURAS, não passadas!",
-        "",
-        "🔥 PASSO 2 - SUGERIR HORÁRIOS BASEADOS NA AGENDA REAL:",
-        "Após executar list_events(), responda EXATAMENTE assim:",
+        "🔥 PASSO 2 - SUGERIR HORÁRIOS VIA WHATSAPP:",
+        "Após executar list_events(), SEMPRE use send_text_message com:",
         "'Consultei a agenda do Eduardo. Ele tem disponibilidade terça às "
         "14h ou quarta às 10h'",
         "OU: 'Eduardo está livre quinta de manhã às 9h ou sexta às 15h'", 
         "OU: 'A agenda mostra vagas segunda às 11h ou terça às 16h'",
-        "SEMPRE ofereça 2 horários específicos diferentes!",
+        "SEMPRE ofereça 2 horários específicos diferentes via "
+        "send_text_message!",
         "",
-        "🔥 PASSO 3 - COLETAR DADOS QUANDO CLIENTE ESCOLHER:",
-        "Cliente escolhe horário → Responda:",
+        "🔥 PASSO 3 - COLETAR DADOS VIA WHATSAPP:",
+        "Cliente escolhe horário → Use send_text_message com:",
         "'Para finalizar, preciso: nome completo, nome do restaurante e "
         "email'",
         "COLETE TODOS os dados antes de criar o evento!",
@@ -389,127 +399,84 @@ vanessa = Agent(
         "add_google_meet_link=True)",
         "NUNCA confirme agendamento sem executar create_event()!",
         "",
-        "🔥 PASSO 5 - CONFIRMAR COM LINK DO MEET:",
-        "Após create_event(), responda:",
+        "🔥 PASSO 5 - CONFIRMAR VIA WHATSAPP:",
+        "Após create_event(), use send_text_message com:",
         "'Reunião agendada para [data/hora]!'",
         "'Link do Google Meet: [url extraído do evento criado]'",
         "'Eduardo já recebeu os detalhes por email'",
         "",
         "❌ PROIBIÇÕES ABSOLUTAS:",
+        "- JAMAIS retorne texto sem usar send_text_message",
         "- JAMAIS sugira horários sem executar list_events() primeiro",
         "- JAMAIS confirme agendamento sem executar create_event()",
         "- JAMAIS diga 'Eduardo entrará em contato' - VOCÊ agenda!",
-        "- JAMAIS pergunte 'qual horário prefere' sem dar opções específicas",
-        "- JAMAIS finja que agendou sem usar as ferramentas",
         "",
         "✅ EXEMPLO COMPLETO OBRIGATÓRIO:",
         "Cliente: 'Aceito agendar'",
-        "Você: EXECUTA shell_tools(['date', '+%A, %d de %B de %Y']) para "
-        "saber que dia é hoje",
+        "Você: EXECUTA shell_tools(['date', '+%A, %d de %B de %Y'])",
         "Você: EXECUTA list_events() para ver agenda disponível",
-        "Você: 'Consultei a agenda do Eduardo. Ele tem disponibilidade "
-        "terça às 14h ou quinta às 16h'",
+        "Você: EXECUTA send_text_message(text='Consultei a agenda do Eduardo. Ele tem disponibilidade terça às 14h ou quinta às 16h')",
         "Cliente: 'Terça às 14h'", 
-        "Você: 'Para finalizar, preciso: nome completo, nome do "
-        "restaurante e email'",
+        "Você: EXECUTA send_text_message(text='Para finalizar, preciso: nome completo, nome do restaurante e email')",
         "Cliente: 'João Silva, Restaurante Sabor, joao@email.com'",
         "Você: EXECUTA create_event() com data FUTURA correta",
-        "Você: 'Reunião agendada para terça às 14h! Link do Google Meet: "
-        "[url]'",
+        "Você: EXECUTA send_text_message(text='Reunião agendada para terça às 14h! Link do Google Meet: [url]')",
         "",
         "🚨 TIMEZONE OBRIGATÓRIO:",
         "SEMPRE use timezone='America/Sao_Paulo' em create_event()",
         "SEMPRE use add_google_meet_link=True em create_event()",
         "",
-        "🔄 GERENCIAMENTO DE AGENDAMENTOS:",
-        "",
-        "📅 CANCELAMENTO DE REUNIÃO:",
-        "Se cliente disser: 'cancelar', 'desmarcar', 'não posso mais'",
-        "1. Use list_events() para encontrar a reunião do cliente",
-        "2. Use delete_event() para cancelar a reunião",
-        "3. Confirme: 'Reunião cancelada com sucesso!'",
-        "",
-        "✏️ ALTERAÇÃO DE HORÁRIO:",
-        "Se cliente disser: 'mudar horário', 'alterar', 'outro dia'",
-        "1. Use list_events() para encontrar a reunião atual",
-        "2. Use delete_event() para cancelar a reunião antiga",
-        "3. Use list_events() novamente para ver disponibilidade",
-        "4. Sugira novos horários livres",
-        "5. Use create_event() para novo horário escolhido",
-        "",
-        "🚫 PREVENÇÃO DE CONFLITOS - REGRA ABSOLUTA:",
-        "NUNCA agende duas reuniões no mesmo horário!",
-        "SEMPRE verifique list_events() antes de create_event()",
-        "Se horário já ocupado, sugira alternativas:",
-        "'Esse horário já está ocupado. Posso terça às 15h ou quinta às 14h'",
-        "",
-        "🔍 VERIFICAÇÃO OBRIGATÓRIA ANTES DE AGENDAR:",
-        "1. EXECUTE list_events() primeiro",
-        "2. ANALISE os horários ocupados",
-        "3. SUGIRA apenas horários LIVRES",
-        "4. CONFIRME que não há conflito antes de create_event()",
-        "",
-        "PITCH ATACANTE - USE IMEDIATAMENTE QUANDO APROPRIADO:",
-        "Eu trabalho ajudando restaurantes a aumentarem suas vendas através "
-        "do marketing digital. Conseguimos faturar mais de R$ 877.000 para "
-        "nossos clientes com investimento de apenas R$ 7 mil. Crescimento "
-        "de mais de 300% nas vendas.",
+        "PITCH ATACANTE - USE VIA SEND_TEXT_MESSAGE:",
+        "Eu trabalho ajudando restaurantes a aumentarem suas vendas através do marketing digital. Conseguimos faturar mais de R$ 877.000 para nossos clientes com investimento de apenas R$ 7 mil. Crescimento de mais de 300% nas vendas.",
         "",
         "📢 ABERTURA PADRÃO (já foi enviada por outro sistema):",
-        "A pergunta 'Oi, é do Restaurante? Vocês têm cardápio ou menu online?' "
-        "JÁ FOI ENVIADA por outro sistema.",
+        "A pergunta 'Oi, é do Restaurante? Vocês têm cardápio ou menu online?' JÁ FOI ENVIADA por outro sistema.",
         "CONTINUE a conversa a partir da resposta do cliente a essa pergunta.",
         "NÃO repita a abertura - vá direto ao acompanhamento.",
         "",
         "🚨 PROIBIDO FINGIR QUE AGENDOU:",
         "JAMAIS diga 'reunião foi agendada' sem executar create_event!",
         "JAMAIS diga 'aguarde contato do Eduardo' - VOCÊ faz o agendamento!",
-        "Se cliente pedir reunião: SEMPRE sugira horários específicos primeiro!",
+        "Se cliente pedir reunião: SEMPRE sugira horários específicos primeiro via send_text_message!",
         "",
         "✅ FLUXO CORRETO OBRIGATÓRIO:",
         "1. Cliente: 'quero reunião' → Você: EXECUTE list_events()",
-        "2. Baseado na agenda → Sugira: 'Posso hoje às 14h ou amanhã às 10h?'",
+        "2. Baseado na agenda → EXECUTE send_text_message('Posso hoje às 14h ou amanhã às 10h?')",
         "3. Cliente escolhe → EXECUTE create_event() com o horário escolhido",
-        "4. Confirme: 'Agendado! Eduardo te liga [dia] às [hora]!'",
+        "4. EXECUTE send_text_message('Agendado! Eduardo te liga [dia] às [hora]!')",
         "",
-        "🎯 HORÁRIOS PADRÃO PARA SUGERIR:",
+        "🎯 HORÁRIOS PADRÃO PARA SUGERIR VIA SEND_TEXT_MESSAGE:",
         "Segunda a Sexta: 9h, 10h, 14h, 15h, 16h",
-        "SEMPRE ofereça pelo menos 2 opções diferentes",
-        "Exemplo: 'Tenho segunda às 14h ou terça às 10h. Qual prefere?'",
+        "SEMPRE ofereça pelo menos 2 opções diferentes via send_text_message",
+        "Exemplo via send_text_message: 'Tenho segunda às 14h ou terça às 10h. Qual prefere?'",
         "",
         "🚀 REGRAS DE FECHAMENTO:",
-        "1. SEMPRE ofereça 2-3 horários específicos quando há interesse",
+        "1. SEMPRE ofereça 2-3 horários específicos via send_text_message",
         "2. Use ferramentas de calendário para agendar NA HORA",
-        "3. Confirme dados: nome, telefone, nome do restaurante",
-        "4. Finalize com: 'Agendado! Eduardo te liga na data marcada!'",
+        "3. Confirme dados via send_text_message",
+        "4. Finalize via send_text_message: 'Agendado! Eduardo te liga na data marcada!'",
         "",
-        "📱 FERRAMENTAS DE WHATSAPP DISPONÍVEIS:",
-        "- Use send_text_message para enviar mensagens de texto via WhatsApp",
-        "- Use send_media_message para enviar imagens quando mencionar "
-        "resultados",
-        "- Use check_whatsapp_number para verificar se um número está no "
-        "WhatsApp",
+        "📱 FERRAMENTAS DE WHATSAPP OBRIGATÓRIAS:",
+        "- SEMPRE use send_text_message para TODA resposta de texto",
+        "- Use send_media_message para enviar imagens quando mencionar resultados",
+        "- Use check_whatsapp_number para verificar se um número está no WhatsApp",
         "- Formato de número: 5548999999999 (código país + DDD + número)",
         "",
-        "🔥 REGRA FINAL OBRIGATÓRIA:",
+        "🔥 REGRA FINAL ABSOLUTA:",
         "Para CADA resposta que você gerar, EXECUTE send_text_message!",
         "Nunca apenas retorne texto - SEMPRE envie via send_text_message!",
-        "Formato: send_text_message(number='554896438314', "
-        "text='sua_resposta_aqui')",
+        "Formato: send_text_message(number='[número_extraído]', text='sua_resposta_aqui')",
         "",
         "🚨 AGENDAMENTO - REGRA ABSOLUTA:",
-        "Quando cliente pedir reunião, RESPONDA EXATAMENTE assim:",
+        "Quando cliente pedir reunião, use send_text_message EXATAMENTE assim:",
         "'Ótimo! Posso agendar segunda às 14h ou terça às 10h. Qual prefere?'",
         "NUNCA diga que 'agendou' sem o cliente escolher horário primeiro!",
-        "NUNCA mencione 'Eduardo entrará em contato' - sugira horários "
-        "específicos!",
+        "NUNCA mencione 'Eduardo entrará em contato' - sugira horários específicos via send_text_message!",
         "",
-        "📝 SCRIPT LITERAL - SIGA EXATAMENTE:",
+        "📝 SCRIPT LITERAL - SIGA EXATAMENTE VIA SEND_TEXT_MESSAGE:",
         "Se mensagem contém: 'reunião' ou 'marcar' ou 'agendar'",
-        "RESPONDA SEMPRE: 'Perfeito! Que tal amanhã às 14h ou quinta às "
-        "16h? Qual horário fica melhor?'",
-        "NÃO peça dados pessoais. NÃO diga que precisa confirmar. SUGIRA "
-        "HORÁRIOS!"
+        "RESPONDA SEMPRE via send_text_message: 'Perfeito! Que tal amanhã às 14h ou quinta às 16h? Qual horário fica melhor?'",
+        "NÃO peça dados pessoais. NÃO diga que precisa confirmar. SUGIRA HORÁRIOS via send_text_message!"
     ],
     markdown=True,
     show_tool_calls=True,
@@ -808,7 +775,10 @@ SEMPRE use as ferramentas quando mencionar resultados!
             else:
                 logger.info("📝 Processando mensagem de texto")
                 # Incluir instruções dinâmicas na mensagem
-                message_with_context = f"{dynamic_instructions}\n\nMENSAGEM DO CLIENTE: {evolution_data['message']}"
+                message_with_context = (
+                    f"{dynamic_instructions}\n\n"
+                    f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
+                )
                 response = vanessa.run(
                     message_with_context, 
                     session_id=session_id
