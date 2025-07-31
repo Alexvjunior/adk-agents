@@ -83,7 +83,7 @@ agent_knowledge = AgentKnowledge(
             api_key=os.environ.get("OPENAI_API_KEY"),
             dimensions=3072,  # Dimensões máximas para melhor precisão
         ),
-        path="knowledge_db", 
+        path="knowledge_db",
         persistent_client=True,
     ),
     chunking_strategy=RecursiveChunking(
@@ -100,9 +100,9 @@ def load_knowledge_base_safely():
     evitando rate limiting da API da OpenAI
     """
     import time
-    
-    reader = TextReader(chunk=True)
-    knowledge_dir = Path("knowledge/")
+
+reader = TextReader(chunk=True)
+knowledge_dir = Path("knowledge/")
     
     if not knowledge_dir.exists():
         logger.warning("⚠️ Diretório 'knowledge/' não encontrado")
@@ -110,7 +110,7 @@ def load_knowledge_base_safely():
     
     # Listar todos os arquivos para processar
     files_to_process = []
-    for file_path in knowledge_dir.iterdir():
+for file_path in knowledge_dir.iterdir():
         if file_path.is_file() and file_path.suffix in ['.txt', '.md']:
             files_to_process.append(file_path)
     
@@ -145,7 +145,7 @@ def load_knowledge_base_safely():
                 pass
             
             # Ler e processar o arquivo
-            documents = reader.read(file_path)
+        documents = reader.read(file_path)
             
             # Processar documentos em lotes pequenos
             batch_size = 2  # Processar 2 documentos por vez
@@ -400,7 +400,7 @@ Para QUALQUER agendamento (novo ou mudança):
 → SÓ ofereça horários DISPONÍVEIS
 
 🚨 SEMPRE SEJA ATIVO E COMERCIAL:
-- Mencione resultados (R$ 877.000, 300%)
+- Mencione resultados (R$ 877.000, 30%)
 - Busque marcar reunião com Eduardo
 - Use frases diretas: "Posso agendar hoje?"
 - NUNCA seja passivo
@@ -483,7 +483,7 @@ vanessa = Agent(
         "",
         "🚨 REGRA CRÍTICA #4 - SEMPRE ATIVO E COMERCIAL:",
         "EM TODA RESPOSTA, SEMPRE inclua um elemento ativo:",
-        "- Mencione resultados (R$ 877.000, 300% crescimento)", 
+        "- Mencione resultados (R$ 877.000, 30% crescimento)", 
         "- Ofereça mostrar cases ou exemplos",
         "- Busque marcar reunião com Eduardo",
         "- Use frases como: 'Posso agendar hoje?', 'Que tal conversarmos?'",
@@ -498,7 +498,7 @@ vanessa = Agent(
         "→ Use APENAS send_text_message com:",
         "'Tudo bem? 😉 Aqui é a Vanessa. Trabalho ajudando restaurantes "
         "a atrair clientes. Nos últimos meses, ajudamos restaurantes a "
-        "crescer mais de 300%, faturando R$ 877.000 em um mês, "
+        "crescer mais de 30%, faturando R$ 877.000 em um mês, "
         "investindo R$ 7 mil. Posso mostrar resultados?'",
         "",
         "SE cliente pedir para ver resultados:",
@@ -748,7 +748,7 @@ async def root():
         "description": (
             "Assistente de vendas especializada em marketing digital para "
             "restaurantes. Ajuda a captar leads qualificados e marcar "
-            "reuniões com resultados comprovados: crescimento de 300% e "
+            "reuniões com resultados comprovados: crescimento de 30% e "
             "faturamento de R$ 862.000 em um mês."
         ),
         "endpoints": {
@@ -832,7 +832,7 @@ async def ask_vanessa(request: Request):
             logger.info(f"   - Imagem: {image_length} chars base64")
         logger.info(f"   - RemoteJid: {remote_jid}")
         logger.info(f"   - Nome do usuário: {push_name}")
-
+        
         # Extrair número do WhatsApp do remoteJid para as ferramentas
         whatsapp_number = remote_jid.replace("@s.whatsapp.net", "")
         logger.info(f"📱 Número extraído para ferramentas: {whatsapp_number}")
@@ -863,7 +863,7 @@ Para resultados financeiros (R$ 877.000):
 - media: 'knowledge/relatorio.jpg'
 - caption: 'Aqui estão os resultados reais dos nossos clientes'
 
-Para crescimento (300%):
+Para crescimento (30%):
 - media: 'knowledge/visualizacao.jpg' 
 - caption: 'Visualização do crescimento dos nossos clientes'
 
@@ -933,7 +933,7 @@ send_media_message(number='{whatsapp_number}', media_type='image',
 media='knowledge/relatorio.jpg', caption='Aqui estão os resultados 
 reais dos nossos clientes!')
 
-Para crescimento (300%):
+Para crescimento (30%):
 send_media_message(number='{whatsapp_number}', media_type='image', 
 media='knowledge/visualizacao.jpg', caption='Visualização do 
 crescimento dos nossos clientes!')
@@ -948,71 +948,71 @@ maior impacto!
 
 SEMPRE use as ferramentas quando mencionar resultados!
 """
-            
-            # Processar baseado no tipo de mensagem
-            try:
-                if message_type == 'image' and has_image:
-                    logger.info("🖼️ Processando mensagem de imagem")
-                    response = vanessa.run(
-                        images=[evolution_data['image_base64']], 
-                        session_id=session_id
-                    )
-                elif message_type == 'audio' and has_audio:
-                    logger.info("📻 Processando mensagem de áudio")
-                    response = vanessa.run(
-                        audio=evolution_data['audio_base64'], 
-                        session_id=session_id
-                    )
-                else:
+        
+        # Processar baseado no tipo de mensagem
+        try:
+            if message_type == 'image' and has_image:
+                logger.info("🖼️ Processando mensagem de imagem")
+                response = vanessa.run(
+                    images=[evolution_data['image_base64']], 
+                    session_id=session_id
+                )
+            elif message_type == 'audio' and has_audio:
+                logger.info("📻 Processando mensagem de áudio")
+                response = vanessa.run(
+                    audio=evolution_data['audio_base64'], 
+                    session_id=session_id
+                )
+            else:
                     logger.info("📝 Processando mensagem de texto (fallback)")
                     message_with_context = (
                         f"{dynamic_instructions}\n\n"
                         f"MENSAGEM DO CLIENTE: {evolution_data['message']}"
                     )
-                    response = vanessa.run(
-                        message_with_context, 
-                        session_id=session_id
-                    )
-                
-                logger.info(f"🔍 Resposta do agente - Tipo: {type(response)}")
-                if hasattr(response, 'content'):
-                    logger.info(f"🔍 Content: {response.content}")
-                if hasattr(response, 'tool_calls') and response.tool_calls:
+                response = vanessa.run(
+                    message_with_context, 
+                    session_id=session_id
+                )
+            
+            logger.info(f"🔍 Resposta do agente - Tipo: {type(response)}")
+            if hasattr(response, 'content'):
+                logger.info(f"🔍 Content: {response.content}")
+            if hasattr(response, 'tool_calls') and response.tool_calls:
                     logger.info(f"🔧 Tool calls detectados: "
                                f"{len(response.tool_calls)}")
-                    for i, tool_call in enumerate(response.tool_calls):
-                        logger.info(f"🔧 Tool call {i+1}: {tool_call}")
-                
-            except Exception as e:
-                logger.error(f"❌ Erro ao executar agente: {e}")
-                logger.error(f"❌ Tipo do erro: {type(e)}")
-                import traceback
-                logger.error(f"❌ Traceback: {traceback.format_exc()}")
-                response = None
-
-            # Extrair apenas o conteúdo da mensagem com verificação de None
-            if response is None:
-                message = "Erro: Resposta vazia do agente"
-            elif hasattr(response, 'content') and response.content:
-                message = response.content
-            elif hasattr(response, 'content') and response.content is None:
-                # Agente pode ter usado ferramentas sem retornar texto
-                message = "Perfeito! Vou te enviar os materiais de comprovação."
-            else:
-                # Fallback para outros casos
-                message = "Aguarde um momento, estou processando sua solicitação."
+                for i, tool_call in enumerate(response.tool_calls):
+                    logger.info(f"🔧 Tool call {i+1}: {tool_call}")
             
-            # Garantir que message nunca seja None
-            if message is None:
-                message = "Erro: Não foi possível obter resposta"
+        except Exception as e:
+            logger.error(f"❌ Erro ao executar agente: {e}")
+            logger.error(f"❌ Tipo do erro: {type(e)}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            response = None
 
-            logger.info(f"✅ Vanessa respondeu com sucesso "
-                        f"(tamanho: {len(message)} caracteres)")
+        # Extrair apenas o conteúdo da mensagem com verificação de None
+        if response is None:
+            message = "Erro: Resposta vazia do agente"
+        elif hasattr(response, 'content') and response.content:
+            message = response.content
+        elif hasattr(response, 'content') and response.content is None:
+            # Agente pode ter usado ferramentas sem retornar texto
+            message = "Perfeito! Vou te enviar os materiais de comprovação."
+        else:
+            # Fallback para outros casos
+            message = "Aguarde um momento, estou processando sua solicitação."
+        
+        # Garantir que message nunca seja None
+        if message is None:
+            message = "Erro: Não foi possível obter resposta"
 
-            return {
+        logger.info(f"✅ Vanessa respondeu com sucesso "
+                    f"(tamanho: {len(message)} caracteres)")
+
+        return {
                 "message": "Resposta enviada via WhatsApp (processamento imediato)",
                 "processing_mode": "immediate"
-            }
+        }
 
     except Exception as e:
         logger.error(f"❌ Erro na conversa com Vanessa: {str(e)}")

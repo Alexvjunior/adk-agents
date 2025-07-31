@@ -1,9 +1,12 @@
 # Arquivos de credenciais sensíveis
 calendar_token.json
+calendar_token_*.json
 credenciais.json
 *.token
 credentials*.json
 .env
+.env.*
+.env.backup
 # Variáveis de ambiente
 .env
 .env.local
