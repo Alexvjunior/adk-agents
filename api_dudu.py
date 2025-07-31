@@ -378,9 +378,17 @@ CONTEXTO ATUAL:
 PROCESSE TODAS as informações juntas e responda UMA ÚNICA VEZ 
 via send_text_message!
 
-🖼️ ENVIO DE IMAGENS AUTOMÁTICO:
-Se mencionar resultados ou comprovação, SEMPRE envie imagens também:
+🚨 REGRA DE AGENDAMENTO:
+APENAS sugira horários se cliente PEDIR EXPLICITAMENTE:
+"quero agendar", "vamos marcar", "aceito reunião", "pode marcar"
 
+Se cliente só demonstrou interesse ou fez perguntas:
+- Responda naturalmente
+- Apresente serviços se apropriado
+- Envie imagens se mencionar resultados
+- NÃO force agendamento ainda
+
+🖼️ ENVIO DE IMAGENS (quando relevante):
 Para resultados financeiros (R$ 877.000):
 send_media_message(number='{whatsapp_number}', media_type='image',
 media='knowledge/relatorio.jpg', caption='Resultados reais dos 
@@ -390,8 +398,6 @@ Para crescimento (300%):
 send_media_message(number='{whatsapp_number}', media_type='image', 
 media='knowledge/visualizacao.jpg', caption='Visualização do 
 crescimento!')
-
-🎯 REGRA: Combine texto + imagem para maior impacto visual!
 
 Use send_text_message(number='{whatsapp_number}', 
 text='sua_resposta_completa')
@@ -448,7 +454,7 @@ vanessa = Agent(
     tools=tools,  # Adicionado shell_tools
     knowledge=agent_knowledge,
     add_history_to_messages=True,
-    tool_choice="required",  # Forçar uso das ferramentas
+    tool_choice="auto",  # Mudado para "auto" para controle mais inteligente
     instructions=[
         "🚨 REGRA CRÍTICA #1 - ENVIO OBRIGATÓRIO:",
         "TODA resposta que você gerar DEVE ser enviada via send_text_message!",
@@ -482,10 +488,11 @@ vanessa = Agent(
         "🚨 FLUXO OBRIGATÓRIO DE AGENDAMENTO:",
         "",
         "⚡ GATILHOS PARA USAR FERRAMENTAS (palavras-chave):",
-        "Se cliente disser: 'reunião', 'marcar', 'agendar', 'aceito', 'topa', 'sim, quero'",
-        "→ IMEDIATAMENTE execute este fluxo OBRIGATÓRIO:",
+        "Se cliente disser CLARAMENTE: 'quero agendar', 'vamos marcar', "
+        "'aceito reunião', 'sim, quero conversar', 'pode marcar'",
+        "→ APENAS ENTÃO execute este fluxo:",
         "",
-        "🔥 PASSO 1 - CONSULTAR DATA E CALENDÁRIO (OBRIGATÓRIO):",
+        "🔥 PASSO 1 - CONSULTAR DATA E CALENDÁRIO (APENAS SE PEDIR):",
         "ANTES de sugerir qualquer horário, SEMPRE EXECUTE:",
         "1. shell_tools com comando: ['date', '+%A, %d de %B de %Y']",
         "2. list_events() ← Esta ferramenta é OBRIGATÓRIA!",
@@ -499,6 +506,13 @@ vanessa = Agent(
         "OU: 'A agenda mostra vagas segunda às 11h ou terça às 16h'",
         "SEMPRE ofereça 2 horários específicos diferentes via "
         "send_text_message!",
+        "",
+        "🚨 IMPORTANTE - NÃO SEJA AGRESSIVO:",
+        "- Se cliente só disse 'interessante' ou 'me interessei': "
+        "NÃO sugira horários ainda",
+        "- Se cliente fez pergunta: Responda a pergunta (sem forçar "
+        "agendamento)",
+        "- Só sugira horários quando cliente PEDIR EXPLICITAMENTE",
         "",
         "🔥 PASSO 3 - COLETAR DADOS VIA WHATSAPP:",
         "Cliente escolhe horário → Use send_text_message com:",
@@ -622,9 +636,11 @@ vanessa = Agent(
         "NUNCA mencione 'Eduardo entrará em contato' - sugira horários específicos via send_text_message!",
         "",
         "📝 SCRIPT LITERAL - SIGA EXATAMENTE VIA SEND_TEXT_MESSAGE:",
-        "Se mensagem contém: 'reunião' ou 'marcar' ou 'agendar'",
-        "RESPONDA SEMPRE via send_text_message: 'Perfeito! Que tal amanhã às 14h ou quinta às 16h? Qual horário fica melhor?'",
-        "NÃO peça dados pessoais. NÃO diga que precisa confirmar. SUGIRA HORÁRIOS via send_text_message!"
+        "Se mensagem contém: 'quero agendar' ou 'vamos marcar' ou "
+        "'aceito reunião'",
+        "RESPONDA via send_text_message: 'Perfeito! Que tal amanhã às 14h "
+        "ou quinta às 16h? Qual horário fica melhor?'",
+        "APENAS se cliente PEDIR agendamento explicitamente!"
     ],
     markdown=True,
     show_tool_calls=True,
